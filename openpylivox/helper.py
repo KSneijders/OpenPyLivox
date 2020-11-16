@@ -56,36 +56,31 @@ def _parse_resp(show_message, bin_data):
     data_bytes = []
     data_string = ""
     data_length = len(bin_data)
-    for i in range(0, data_length):
+    for i in range(data_length):
         data_bytes.append(bin_data[i:i + 1])
         data_string += (binascii.hexlify(bin_data[i:i + 1])).decode("utf-8")
 
     crc16_data = b''
-    for i in range(0, 7):
+    for i in range(7):
         crc16_data += binascii.hexlify(data_bytes[i])
 
     crc16_data_a = bytes.fromhex(crc16_data.decode('ascii'))
-    check_sum16_i = crc16(crc16_data_a)
+    cmd_message, data_message, data_id, data = "", "", "", []
+    data_is_valid = True
 
     frame_header_checksum_crc16 = int.from_bytes((data_bytes[7] + data_bytes[8]), byteorder='little')
-
-    cmd_message, data_message, data_id, = "", "", ""
-    data = []
-
-    good_data = True
-
-    if frame_header_checksum_crc16 == check_sum16_i:
+    if frame_header_checksum_crc16 == crc16(crc16_data_a):
 
         crc32_data = b''
         for i in range(0, data_length - 4):
             crc32_data += binascii.hexlify(data_bytes[i])
 
-        crc32_data_a = bytes.fromhex(crc32_data.decode('ascii'))
-        check_sum32_i = crc32(crc32_data_a)
+        check_sum32_i = crc32(bytes.fromhex(crc32_data.decode('ascii')))
 
-        frame_header_checksum_crc32 = int.from_bytes((data_bytes[data_length - 4] + data_bytes[data_length - 3] +
-                                                      data_bytes[data_length - 2] + data_bytes[data_length - 1]),
-                                                     byteorder='little')
+        frame_header_checksum_crc32 = int.from_bytes(
+            (data_bytes[data_length - 4] + data_bytes[data_length - 3] +
+             data_bytes[data_length - 2] + data_bytes[data_length - 1]), byteorder='little'
+        )
 
         if frame_header_checksum_crc32 == check_sum32_i:
 
@@ -93,49 +88,42 @@ def _parse_resp(show_message, bin_data):
             frame_version = int.from_bytes(data_bytes[1], byteorder='little')  # should be 1
             frame_length = int.from_bytes((data_bytes[2] + data_bytes[3]), byteorder='little')  # max value = 1400
 
-            if frame_sof == 170:
-                if frame_version == 1:
-                    if frame_length <= 1400:
-                        frame_cmd_type = int.from_bytes(data_bytes[4], byteorder='little')
+            if frame_sof == 170 and frame_version == 1 and frame_length <= 1400:
+                frame_cmd_type = int.from_bytes(data_bytes[4], byteorder='little')
 
-                        cmd_message = ""
-                        if frame_cmd_type == 0:
-                            cmd_message = "CMD (request)"
-                        elif frame_cmd_type == 1:
-                            cmd_message = "ACK (response)"
-                        elif frame_cmd_type == 2:
-                            cmd_message = "MSG (message)"
-                        else:
-                            good_data = False
-
-                        frame_data_cmd_set = int.from_bytes(data_bytes[9], byteorder='little')
-
-                        data_message = ""
-                        if frame_data_cmd_set == 0:
-                            data_message = "General"
-                        elif frame_data_cmd_set == 1:
-                            data_message = "Lidar"
-                        elif frame_data_cmd_set == 2:
-                            data_message = "Hub"
-                        else:
-                            good_data = False
-
-                        data_id = str(int.from_bytes(data_bytes[10], byteorder='little'))
-                        data = data_bytes[11:]
-
-                    else:
-                        good_data = False
+                cmd_message = ""
+                if frame_cmd_type == 0:
+                    cmd_message = "CMD (request)"
+                elif frame_cmd_type == 1:
+                    cmd_message = "ACK (response)"
+                elif frame_cmd_type == 2:
+                    cmd_message = "MSG (message)"
                 else:
-                    good_data = False
+                    data_is_valid = False
+
+                frame_data_cmd_set = int.from_bytes(data_bytes[9], byteorder='little')
+
+                data_message = ""
+                if frame_data_cmd_set == 0:
+                    data_message = "General"
+                elif frame_data_cmd_set == 1:
+                    data_message = "Lidar"
+                elif frame_data_cmd_set == 2:
+                    data_message = "Hub"
+                else:
+                    data_is_valid = False
+
+                data_id = str(int.from_bytes(data_bytes[10], byteorder='little'))
+                data = data_bytes[11:]
             else:
-                good_data = False
+                data_is_valid = False
         else:
-            good_data = False
+            data_is_valid = False
             if show_message:
                 print("CRC32 Checksum Error")
     else:
-        good_data = False
+        data_is_valid = False
         if show_message:
             print("CRC16 Checksum Error")
 
-    return good_data, cmd_message, data_message, data_id, data
+    return data_is_valid, cmd_message, data_message, data_id, data

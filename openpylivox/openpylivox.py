@@ -1920,7 +1920,7 @@ class OpenPyLivox:
                             self._isConnected = True
                             self._heartbeat = HeartbeatThread(1, self._cmdSocket, self._sensorIP, 65000,
                                                               self._CMD_HEARTBEAT, self._showMessages,
-                                                              self._format_spaces, self)
+                                                              self._format_spaces)
                             time.sleep(0.15)
                             self._query()
                             if self._showMessages: print(
