@@ -34,75 +34,14 @@ import time
 from pathlib import Path
 
 # additional modules
-import crcmod
 import laspy
 import numpy as np
 from deprecated import deprecated
 from tqdm import tqdm
 
-
-class _heartbeatThread(object):
-
-    def __init__(self, interval, transmit_socket, send_to_IP, send_to_port, send_command, showMessages, format_spaces):
-        self.interval = interval
-        self.IP = send_to_IP
-        self.port = send_to_port
-        self.t_socket = transmit_socket
-        self.t_command = send_command
-        self.started = True
-        self.work_state = -1
-        self.idle_state = 0
-        self._showMessages = showMessages
-        self._format_spaces = format_spaces
-
-        self.thread = threading.Thread(target=self.run, args=())
-        self.thread.daemon = True
-        self.thread.start()
-
-    def run(self):
-        while True:
-            if self.started:
-                self.t_socket.sendto(self.t_command, (self.IP, self.port))
-
-                # check for proper response from heartbeat request
-                if select.select([self.t_socket], [], [], 0.1)[0]:
-                    binData, addr = self.t_socket.recvfrom(22)
-                    tempObj = openpylivox()
-                    _, ack, cmd_set, cmd_id, ret_code_bin = tempObj._parseResp(binData)
-
-                    if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "3":
-                        ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
-                        if ret_code != 0:
-                            if self._showMessages: print(
-                                "   " + self.IP + self._format_spaces + self._format_spaces + "   -->     incorrect heartbeat response")
-                        else:
-                            self.work_state = int.from_bytes(ret_code_bin[1], byteorder='little')
-
-                            # TODO: read and store the lidar status codes from heartbeat response (right now only being read from data stream)
-
-                            if self.work_state == 4:
-                                print(
-                                    "   " + self.IP + self._format_spaces + self._format_spaces + "   -->     *** ERROR: HEARTBEAT ERROR MESSAGE RECEIVED ***")
-                                sys.exit(0)
-                    elif ack == "MSG (message)" and cmd_set == "General" and cmd_id == "7":
-                        # not given an option to hide this message!!
-                        print(
-                            "   " + self.IP + self._format_spaces + self._format_spaces + "   -->     *** ERROR: ABNORMAL STATUS MESSAGE RECEIVED ***")
-                        sys.exit(1)
-                    else:
-                        if self._showMessages: print(
-                            "   " + self.IP + self._format_spaces + self._format_spaces + "   -->     incorrect heartbeat response")
-
-                for i in range(9, -1, -1):
-                    self.idle_state = i
-                    time.sleep(self.interval / 10.0)
-            else:
-                break
-
-    def stop(self):
-        self.started = False
-        self.thread.join()
-        self.idle_state = 9
+from openpylivox import helper
+from openpylivox.heartbeat_thread import HeartbeatThread
+from openpylivox.helper import _parse_resp
 
 
 class _dataCaptureThread(object):
@@ -1485,7 +1424,7 @@ class _dataCaptureThread(object):
         self.thread.join()
 
 
-class openpylivox(object):
+class OpenPyLivox:
     _CMD_QUERY = bytes.fromhex((b'AA010F0000000004D70002AE8A8A7B').decode('ascii'))
     _CMD_HEARTBEAT = bytes.fromhex((b'AA010F0000000004D7000338BA8D0C').decode('ascii'))
     _CMD_DISCONNECT = bytes.fromhex((b'AA010F0000000004D70006B74EE77C').decode('ascii'))
@@ -1758,7 +1697,7 @@ class openpylivox(object):
         # check for proper response from disconnect request
         if select.select([self._cmdSocket], [], [], 0.1)[0]:
             binData, addr = self._cmdSocket.recvfrom(16)
-            _, ack, cmd_set, cmd_id, ret_code_bin = self._parseResp(binData)
+            _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
 
             if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "6":
                 ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
@@ -1777,7 +1716,7 @@ class openpylivox(object):
         # check for proper response from reboot request
         if select.select([self._cmdSocket], [], [], 0.1)[0]:
             binData, addr = self._cmdSocket.recvfrom(16)
-            _, ack, cmd_set, cmd_id, ret_code_bin = self._parseResp(binData)
+            _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
 
             if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "10":
                 ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
@@ -1797,7 +1736,7 @@ class openpylivox(object):
         if select.select([self._cmdSocket], [], [], 0.1)[0]:
 
             binData, addr = self._cmdSocket.recvfrom(20)
-            _, ack, cmd_set, cmd_id, ret_code_bin = self._parseResp(binData)
+            _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
 
             if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "2":
                 ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
@@ -1816,7 +1755,7 @@ class openpylivox(object):
 
     def _info(self, binData):
 
-        goodData, cmdMessage, dataMessage, dataID, dataBytes = self._parseResp(binData)
+        goodData, cmdMessage, dataMessage, dataID, dataBytes = _parse_resp(self._showMessages, binData)
 
         device_serial, typeMessage = "", ""
 
@@ -1844,141 +1783,6 @@ class openpylivox(object):
                     typeMessage = "UNKNOWN"
 
         return goodData, cmdMessage, dataMessage, device_serial, typeMessage, ipRangeCode
-
-    def _parseResp(self, binData):
-
-        dataBytes = []
-        dataString = ""
-        dataLength = len(binData)
-        for i in range(0, dataLength):
-            dataBytes.append(binData[i:i + 1])
-            dataString += (binascii.hexlify(binData[i:i + 1])).decode("utf-8")
-
-        crc16Data = b''
-        for i in range(0, 7):
-            crc16Data += binascii.hexlify(dataBytes[i])
-
-        crc16DataA = bytes.fromhex((crc16Data).decode('ascii'))
-        checkSum16I = self._crc16(crc16DataA)
-
-        frame_header_checksum_crc16 = int.from_bytes((dataBytes[7] + dataBytes[8]), byteorder='little')
-
-        cmdMessage, dataMessage, dataID, = "", "", ""
-        data = []
-
-        goodData = True
-
-        if frame_header_checksum_crc16 == checkSum16I:
-
-            crc32Data = b''
-            for i in range(0, dataLength - 4):
-                crc32Data += binascii.hexlify(dataBytes[i])
-
-            crc32DataA = bytes.fromhex((crc32Data).decode('ascii'))
-            checkSum32I = self._crc32(crc32DataA)
-
-            frame_header_checksum_crc32 = int.from_bytes((dataBytes[dataLength - 4] + dataBytes[dataLength - 3] +
-                                                          dataBytes[dataLength - 2] + dataBytes[dataLength - 1]),
-                                                         byteorder='little')
-
-            if frame_header_checksum_crc32 == checkSum32I:
-
-                frame_sof = int.from_bytes(dataBytes[0], byteorder='little')  # should be 170 = '\xAA'
-                frame_version = int.from_bytes(dataBytes[1], byteorder='little')  # should be 1
-                frame_length = int.from_bytes((dataBytes[2] + dataBytes[3]), byteorder='little')  # max value = 1400
-
-                if frame_sof == 170:
-                    if frame_version == 1:
-                        if frame_length <= 1400:
-                            frame_cmd_type = int.from_bytes(dataBytes[4], byteorder='little')
-
-                            cmdMessage = ""
-                            if frame_cmd_type == 0:
-                                cmdMessage = "CMD (request)"
-                            elif frame_cmd_type == 1:
-                                cmdMessage = "ACK (response)"
-                            elif frame_cmd_type == 2:
-                                cmdMessage = "MSG (message)"
-                            else:
-                                goodData = False
-
-                            frame_data_cmd_set = int.from_bytes(dataBytes[9], byteorder='little')
-
-                            dataMessage = ""
-                            if frame_data_cmd_set == 0:
-                                dataMessage = "General"
-                            elif frame_data_cmd_set == 1:
-                                dataMessage = "Lidar"
-                            elif frame_data_cmd_set == 2:
-                                dataMessage = "Hub"
-                            else:
-                                goodData = False
-
-                            dataID = str(int.from_bytes(dataBytes[10], byteorder='little'))
-                            data = dataBytes[11:]
-
-                        else:
-                            goodData = False
-                    else:
-                        goodData = False
-                else:
-                    goodData = False
-            else:
-                goodData = False
-                if self._showMessages: print("CRC32 Checksum Error")
-        else:
-            goodData = False
-            if self._showMessages: print("CRC16 Checksum Error")
-
-        return goodData, cmdMessage, dataMessage, dataID, data
-
-    def _crc16(self, data):
-
-        crc16 = crcmod.mkCrcFun(0x11021, rev=True, initCrc=0x4C49)
-        checkSum = crc16(data)
-        return checkSum
-
-    def _crc16fromStr(self, binString):
-
-        crcDataA = bytes.fromhex((binString).decode('ascii'))
-        checkSum = self._crc16(crcDataA)
-        strHexCheckSum = str(hex(checkSum))[2:]
-
-        strLen = len(strHexCheckSum)
-        for i in range(strLen, 4):
-            strHexCheckSum = "0" + strHexCheckSum
-
-        byte1 = strHexCheckSum[2:4]
-        byte2 = strHexCheckSum[0:2]
-
-        checkSumB = (byte1 + byte2)
-
-        return checkSumB
-
-    def _crc32(self, data):
-
-        crc32 = crcmod.mkCrcFun(0x104C11DB7, rev=True, initCrc=0x564F580A, xorOut=0xFFFFFFFF)
-        checkSum = crc32(data)
-        return checkSum
-
-    def _crc32fromStr(self, binString):
-
-        crcDataA = bytes.fromhex((binString).decode('ascii'))
-        checkSum = self._crc32(crcDataA)
-        strHexCheckSum = str(hex(checkSum))[2:]
-
-        strLen = len(strHexCheckSum)
-        for i in range(strLen, 8):
-            strHexCheckSum = "0" + strHexCheckSum
-
-        byte1 = strHexCheckSum[6:8]
-        byte2 = strHexCheckSum[4:6]
-        byte3 = strHexCheckSum[2:4]
-        byte4 = strHexCheckSum[0:2]
-
-        checkSumB = (byte1 + byte2 + byte3 + byte4)
-
-        return checkSumB
 
     def discover(self, manualComputerIP=""):
 
@@ -2098,7 +1902,7 @@ class openpylivox(object):
                 imuHex = imuHexAll[2:] + imuHexAll[:-2]
                 cmdString = "AA011900000000DC580001" + IPhex + dataHex + cmdHex + imuHex
                 binString = bytes(cmdString, encoding='utf-8')
-                crc32checksum = self._crc32fromStr(binString)
+                crc32checksum = helper.crc32from_str(binString)
                 cmdString += crc32checksum
                 binString = bytes(cmdString, encoding='utf-8')
 
@@ -2108,15 +1912,15 @@ class openpylivox(object):
                 # check for proper response from connection request
                 if select.select([self._cmdSocket], [], [], 0.1)[0]:
                     binData, addr = self._cmdSocket.recvfrom(16)
-                    _, ack, cmd_set, cmd_id, ret_code_bin = self._parseResp(binData)
+                    _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
 
                     if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "1":
                         ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                         if ret_code == 0:
                             self._isConnected = True
-                            self._heartbeat = _heartbeatThread(1, self._cmdSocket, self._sensorIP, 65000,
-                                                               self._CMD_HEARTBEAT, self._showMessages,
-                                                               self._format_spaces)
+                            self._heartbeat = HeartbeatThread(1, self._cmdSocket, self._sensorIP, 65000,
+                                                              self._CMD_HEARTBEAT, self._showMessages,
+                                                              self._format_spaces, self)
                             time.sleep(0.15)
                             self._query()
                             if self._showMessages: print(
@@ -2232,8 +2036,8 @@ class openpylivox(object):
                                 sensor_IPs = ind_IPs
                                 sensor_IDs = ind_IDs
 
-                    sensorM = openpylivox(self._init_showMessages)
-                    sensorR = openpylivox(self._init_showMessages)
+                    sensorM = OpenPyLivox(self._init_showMessages)
+                    sensorR = OpenPyLivox(self._init_showMessages)
 
                     for i in range(3):
                         if int(sensor_IDs[i]) == 1:
@@ -2341,7 +2145,7 @@ class openpylivox(object):
             # check for proper response from lidar start request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(16)
-                _, ack, cmd_set, cmd_id, ret_code_bin = self._parseResp(binData)
+                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
 
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "0":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
@@ -2400,7 +2204,7 @@ class openpylivox(object):
             # check for proper response from lidar stop request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(16)
-                _, ack, cmd_set, cmd_id, ret_code_bin = self._parseResp(binData)
+                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
 
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "0":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
@@ -2436,7 +2240,7 @@ class openpylivox(object):
             # check for proper response from lidar stand-by request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(16)
-                _, ack, cmd_set, cmd_id, ret_code_bin = self._parseResp(binData)
+                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
 
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "0":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
@@ -2477,7 +2281,7 @@ class openpylivox(object):
                 # check for proper response from data start request
                 if select.select([self._cmdSocket], [], [], 0.1)[0]:
                     binData, addr = self._cmdSocket.recvfrom(16)
-                    _, ack, cmd_set, cmd_id, ret_code_bin = self._parseResp(binData)
+                    _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
 
                     if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "4":
                         ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
@@ -2515,7 +2319,7 @@ class openpylivox(object):
                 # check for proper response from data start request
                 if select.select([self._cmdSocket], [], [], 0.1)[0]:
                     binData, addr = self._cmdSocket.recvfrom(16)
-                    _, ack, cmd_set, cmd_id, ret_code_bin = self._parseResp(binData)
+                    _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
 
                     if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "4":
                         ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
@@ -2558,7 +2362,7 @@ class openpylivox(object):
                 # check for proper response from data start request
                 if select.select([self._cmdSocket], [], [], 0.1)[0]:
                     binData, addr = self._cmdSocket.recvfrom(16)
-                    _, ack, cmd_set, cmd_id, ret_code_bin = self._parseResp(binData)
+                    _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
 
                     if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "4":
                         ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
@@ -2597,7 +2401,7 @@ class openpylivox(object):
                 # check for proper response from data stop request
                 if select.select([self._cmdSocket], [], [], 0.1)[0]:
                     binData, addr = self._cmdSocket.recvfrom(16)
-                    _, ack, cmd_set, cmd_id, ret_code_bin = self._parseResp(binData)
+                    _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
 
                     if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "4":
                         ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
@@ -2634,7 +2438,7 @@ class openpylivox(object):
             # check for proper response from dynamic IP request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(16)
-                _, ack, cmd_set, cmd_id, ret_code_bin = self._parseResp(binData)
+                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
 
                 if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "8":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
@@ -2687,7 +2491,7 @@ class openpylivox(object):
                 # check for proper response from static IP request
                 if select.select([self._cmdSocket], [], [], 0.1)[0]:
                     binData, addr = self._cmdSocket.recvfrom(16)
-                    _, ack, cmd_set, cmd_id, ret_code_bin = self._parseResp(binData)
+                    _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
 
                     if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "8":
                         ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
@@ -2722,7 +2526,7 @@ class openpylivox(object):
             # check for proper response from change coordinate system request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(16)
-                _, ack, cmd_set, cmd_id, ret_code_bin = self._parseResp(binData)
+                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
 
                 if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "5":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
@@ -2753,7 +2557,7 @@ class openpylivox(object):
             # check for proper response from change coordinate system request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(16)
-                _, ack, cmd_set, cmd_id, ret_code_bin = self._parseResp(binData)
+                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
 
                 if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "5":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
@@ -2784,7 +2588,7 @@ class openpylivox(object):
             # check for proper response from read extrinsics request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(40)
-                _, ack, cmd_set, cmd_id, ret_code_bin = self._parseResp(binData)
+                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
 
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "2":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
@@ -2825,7 +2629,7 @@ class openpylivox(object):
             # check for proper response from write extrinsics request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(16)
-                _, ack, cmd_set, cmd_id, ret_code_bin = self._parseResp(binData)
+                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
 
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "1":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
@@ -2880,7 +2684,7 @@ class openpylivox(object):
                 # check for proper response from write extrinsics request
                 if select.select([self._cmdSocket], [], [], 0.1)[0]:
                     binData, addr = self._cmdSocket.recvfrom(16)
-                    _, ack, cmd_set, cmd_id, ret_code_bin = self._parseResp(binData)
+                    _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
 
                     if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "1":
                         ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
@@ -2928,7 +2732,7 @@ class openpylivox(object):
             # test case Sept 10, 2020 at 17:15 UTC  -->  AA0117000000006439010A14090A1100E9A435D0337994
             cmdString = "AA0117000000006439010A" + year_b + month_b + day_b + hour_b + sec_b
             binString = bytes(cmdString, encoding='utf-8')
-            crc32checksum = self._crc32fromStr(binString)
+            crc32checksum = helper.crc32from_str(binString)
             cmdString += crc32checksum
             binString = bytes(cmdString, encoding='utf-8')
             setUTCValues = bytes.fromhex((binString).decode('ascii'))
@@ -2941,7 +2745,7 @@ class openpylivox(object):
             # check for proper response from update UTC request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(16)
-                _, ack, cmd_set, cmd_id, ret_code_bin = self._parseResp(binData)
+                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
 
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "10":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
@@ -2975,7 +2779,7 @@ class openpylivox(object):
             # check for proper response from change rain/fog suppression request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(16)
-                _, ack, cmd_set, cmd_id, ret_code_bin = self._parseResp(binData)
+                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
 
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "3":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
@@ -3009,7 +2813,7 @@ class openpylivox(object):
             # check for proper response from change fan request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(16)
-                _, ack, cmd_set, cmd_id, ret_code_bin = self._parseResp(binData)
+                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
 
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "4":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
@@ -3039,7 +2843,7 @@ class openpylivox(object):
             # check for proper response from get fan request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(17)
-                _, ack, cmd_set, cmd_id, ret_code_bin = self._parseResp(binData)
+                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
 
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "5":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
@@ -3083,7 +2887,7 @@ class openpylivox(object):
             # check for proper response from change lidar mode request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(16)
-                _, ack, cmd_set, cmd_id, ret_code_bin = self._parseResp(binData)
+                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
 
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "6":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
@@ -3113,7 +2917,7 @@ class openpylivox(object):
             # check for proper response from start/start IMU data push request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(16)
-                _, ack, cmd_set, cmd_id, ret_code_bin = self._parseResp(binData)
+                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
 
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "8":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
@@ -3138,7 +2942,7 @@ class openpylivox(object):
             # check for proper response from get IMU request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(17)
-                _, ack, cmd_set, cmd_id, ret_code_bin = self._parseResp(binData)
+                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
 
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "9":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
@@ -3508,6 +3312,9 @@ class openpylivox(object):
             stop.append(self._mid100_sensors[i]._doneCapturing())
 
         return all(stop)
+
+
+openpylivox = OpenPyLivox
 
 
 def allDoneCapturing(sensors):
