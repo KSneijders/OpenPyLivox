@@ -1460,8 +1460,7 @@ class OpenPyLivox:
                                    "03.03.0006": 2,
                                    "03.03.0007": 3}
 
-    def __init__(self, showMessages=False):
-
+    def __init__(self, show_messages=False):
         self._isConnected = False
         self._isData = False
         self._isWriting = False
@@ -1485,8 +1484,8 @@ class OpenPyLivox:
         self._dataPort = -1
         self._cmdPort = -1
         self._imuPort = -1
-        self._init_showMessages = showMessages
-        self._showMessages = showMessages
+        self._init_show_messages = show_messages
+        self._show_messages = show_messages
         self._deviceType = "UNKNOWN"
         self._mid100_sensors = []
         self._format_spaces = ""
@@ -1650,7 +1649,7 @@ class OpenPyLivox:
         serverSock_INIT.close()
         time.sleep(0.2)
 
-        if self._showMessages and opt:
+        if self._show_messages and opt:
             for i in range(0, len(IPs)):
                 print("   Found Livox Sensor w. serial #" + Serials[i] + " at IP: " + IPs[i])
             print()
@@ -1697,15 +1696,15 @@ class OpenPyLivox:
         # check for proper response from disconnect request
         if select.select([self._cmdSocket], [], [], 0.1)[0]:
             binData, addr = self._cmdSocket.recvfrom(16)
-            _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
+            _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
 
             if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "6":
                 ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                 if ret_code == 1:
-                    if self._showMessages: print(
+                    if self._show_messages: print(
                         "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to disconnect")
             else:
-                if self._showMessages: print(
+                if self._show_messages: print(
                     "   " + self._sensorIP + self._format_spaces + "   -->     incorrect disconnect response")
 
     def _rebootSensor(self):
@@ -1716,15 +1715,15 @@ class OpenPyLivox:
         # check for proper response from reboot request
         if select.select([self._cmdSocket], [], [], 0.1)[0]:
             binData, addr = self._cmdSocket.recvfrom(16)
-            _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
+            _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
 
             if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "10":
                 ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                 if ret_code == 1:
-                    if self._showMessages: print(
+                    if self._show_messages: print(
                         "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to reboot")
             else:
-                if self._showMessages: print(
+                if self._show_messages: print(
                     "   " + self._sensorIP + self._format_spaces + "   -->     incorrect reboot response")
 
     def _query(self):
@@ -1736,12 +1735,12 @@ class OpenPyLivox:
         if select.select([self._cmdSocket], [], [], 0.1)[0]:
 
             binData, addr = self._cmdSocket.recvfrom(20)
-            _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
+            _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
 
             if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "2":
                 ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                 if ret_code == 1:
-                    if self._showMessages: print(
+                    if self._show_messages: print(
                         "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to receive query results")
                 elif ret_code == 0:
                     AA = str(int.from_bytes(ret_code_bin[1], byteorder='little')).zfill(2)
@@ -1750,12 +1749,12 @@ class OpenPyLivox:
                     DD = str(int.from_bytes(ret_code_bin[4], byteorder='little')).zfill(2)
                     self._firmware = AA + "." + BB + "." + CC + DD
             else:
-                if self._showMessages: print(
+                if self._show_messages: print(
                     "   " + self._sensorIP + self._format_spaces + "   -->     incorrect query response")
 
     def _info(self, binData):
 
-        goodData, cmdMessage, dataMessage, dataID, dataBytes = _parse_resp(self._showMessages, binData)
+        goodData, cmdMessage, dataMessage, dataID, dataBytes = _parse_resp(self._show_messages, binData)
 
         device_serial, typeMessage = "", ""
 
@@ -1912,30 +1911,30 @@ class OpenPyLivox:
                 # check for proper response from connection request
                 if select.select([self._cmdSocket], [], [], 0.1)[0]:
                     binData, addr = self._cmdSocket.recvfrom(16)
-                    _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
+                    _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
 
                     if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "1":
                         ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                         if ret_code == 0:
                             self._isConnected = True
                             self._heartbeat = HeartbeatThread(1, self._cmdSocket, self._sensorIP, 65000,
-                                                              self._CMD_HEARTBEAT, self._showMessages,
+                                                              self._CMD_HEARTBEAT, self._show_messages,
                                                               self._format_spaces)
                             time.sleep(0.15)
                             self._query()
-                            if self._showMessages: print(
+                            if self._show_messages: print(
                                 "Connected to the Livox " + self._deviceType + " at IP: " + self._sensorIP + " (ID: " + str(
                                     self._ipRangeCode) + ")")
                         else:
-                            if self._showMessages: print(
+                            if self._show_messages: print(
                                 "FAILED to connect to the Livox " + self._deviceType + " at IP: " + self._sensorIP)
                     else:
-                        if self._showMessages: print(
+                        if self._show_messages: print(
                             "FAILED to connect to the Livox " + self._deviceType + " at IP: " + self._sensorIP)
             else:
-                if self._showMessages: print("Invalid connection parameter(s)")
+                if self._show_messages: print("Invalid connection parameter(s)")
         else:
-            if self._showMessages: print(
+            if self._show_messages: print(
                 "Already connected to the Livox " + self._deviceType + " at IP: " + self._sensorIP)
 
         return numFound
@@ -1991,7 +1990,7 @@ class OpenPyLivox:
             status_message = ""
 
             if len(unique_serialNums) > 0:
-                if self._showMessages:
+                if self._show_messages:
                     status_message = "\nUsing computer IP address: " + self._computerIP + "\n\n"
                 for i in range(0, len(unique_serialNums)):
                     IPs_list = IP_groups[i].split(',')
@@ -2021,7 +2020,7 @@ class OpenPyLivox:
             if len(unique_sensors) > 0 and unique_sensors[0] != "NA":
                 status_message = status_message[:-1]
                 print(status_message)
-                if self._showMessages:
+                if self._show_messages:
                     print("Attempting to auto-connect to the Livox " + unique_sensors[0] + " with S/N: " +
                           unique_serialNums[0])
 
@@ -2036,8 +2035,8 @@ class OpenPyLivox:
                                 sensor_IPs = ind_IPs
                                 sensor_IDs = ind_IDs
 
-                    sensorM = OpenPyLivox(self._init_showMessages)
-                    sensorR = OpenPyLivox(self._init_showMessages)
+                    sensorM = OpenPyLivox(self._init_show_messages)
+                    sensorR = OpenPyLivox(self._init_show_messages)
 
                     for i in range(3):
                         if int(sensor_IDs[i]) == 1:
@@ -2055,17 +2054,17 @@ class OpenPyLivox:
                                     break
                             break
                 else:
-                    self._showMessages = False
+                    self._show_messages = False
                     numFound = self.connect(self._computerIP, lidarSensorIPs[0], 0, 0, 0)
                     self._deviceType = unique_sensors[0]
                     self.resetShowMessages()
 
-                    if self._showMessages: print(
+                    if self._show_messages: print(
                         "Connected to the Livox " + self._deviceType + " at IP: " + self._sensorIP + " (ID: " + str(
                             self._ipRangeCode) + ")")
 
         else:
-            if self._showMessages: print("*** ERROR: Failed to auto determine the computer IP address ***")
+            if self._show_messages: print("*** ERROR: Failed to auto determine the computer IP address ***")
 
         return numFound
 
@@ -2088,14 +2087,14 @@ class OpenPyLivox:
 
                 self._dataSocket.close()
                 self._cmdSocket.close()
-                if self._showMessages: print(
+                if self._show_messages: print(
                     "Disconnected from the Livox " + self._deviceType + " at IP: " + self._sensorIP)
 
             except:
-                if self._showMessages: print(
+                if self._show_messages: print(
                     "*** Error trying to disconnect from the Livox " + self._deviceType + " at IP: " + self._sensorIP)
         else:
-            if self._showMessages: print("Not connected to the Livox " + self._deviceType + " at IP: " + self._sensorIP)
+            if self._show_messages: print("Not connected to the Livox " + self._deviceType + " at IP: " + self._sensorIP)
 
     def disconnect(self):
         self._disconnect()
@@ -2121,13 +2120,13 @@ class OpenPyLivox:
 
                 self._dataSocket.close()
                 self._cmdSocket.close()
-                if self._showMessages: print("Rebooting the Livox " + self._deviceType + " at IP: " + self._sensorIP)
+                if self._show_messages: print("Rebooting the Livox " + self._deviceType + " at IP: " + self._sensorIP)
 
             except:
-                if self._showMessages: print(
+                if self._show_messages: print(
                     "*** Error trying to reboot from the Livox " + self._deviceType + " at IP: " + self._sensorIP)
         else:
-            if self._showMessages: print("Not connected to the Livox " + self._deviceType + " at IP: " + self._sensorIP)
+            if self._show_messages: print("Not connected to the Livox " + self._deviceType + " at IP: " + self._sensorIP)
 
     def reboot(self):
         self._reboot()
@@ -2139,13 +2138,13 @@ class OpenPyLivox:
         if self._isConnected:
             self._waitForIdle()
             self._cmdSocket.sendto(self._CMD_LIDAR_START, (self._sensorIP, 65000))
-            if self._showMessages: print(
+            if self._show_messages: print(
                 "   " + self._sensorIP + self._format_spaces + "   <--     sent lidar spin up request")
 
             # check for proper response from lidar start request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(16)
-                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
+                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
 
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "0":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
@@ -2153,16 +2152,16 @@ class OpenPyLivox:
                     # if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   -->     lidar is ready")
                     # time.sleep(0.1)
                     if ret_code == 1:
-                        if self._showMessages: print(
+                        if self._show_messages: print(
                             "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to spin up the lidar")
                     elif ret_code == 2:
-                        if self._showMessages: print(
+                        if self._show_messages: print(
                             "   " + self._sensorIP + self._format_spaces + "   -->     lidar is spinning up, please wait...")
                 else:
-                    if self._showMessages: print(
+                    if self._show_messages: print(
                         "   " + self._sensorIP + self._format_spaces + "   -->     incorrect lidar spin up response")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._show_messages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def lidarSpinUp(self):
         self._lidarSpinUp()
@@ -2185,7 +2184,7 @@ class OpenPyLivox:
                     stopper = False
 
             if stopper:
-                if self._showMessages: print("   " + self._sensorIP + self._format_spaces + "   -->     lidar is ready")
+                if self._show_messages: print("   " + self._sensorIP + self._format_spaces + "   -->     lidar is ready")
                 for i in range(len(self._mid100_sensors)):
                     if self._mid100_sensors[i]._showMessages: print(
                         "   " + self._mid100_sensors[i]._sensorIP + self._mid100_sensors[
@@ -2198,18 +2197,18 @@ class OpenPyLivox:
         if self._isConnected:
             self._waitForIdle()
             self._cmdSocket.sendto(self._CMD_LIDAR_POWERSAVE, (self._sensorIP, 65000))
-            if self._showMessages: print(
+            if self._show_messages: print(
                 "   " + self._sensorIP + self._format_spaces + "   <--     sent lidar spin down request")
 
             # check for proper response from lidar stop request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(16)
-                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
+                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
 
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "0":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     if ret_code == 1:
-                        if self._showMessages: print(
+                        if self._show_messages: print(
                             "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to spin down the lidar")
                     else:
                         self._isData = False
@@ -2219,10 +2218,10 @@ class OpenPyLivox:
                         self._isWriting = False
                         time.sleep(0.1)
                 else:
-                    if self._showMessages: print(
+                    if self._show_messages: print(
                         "   " + self._sensorIP + self._format_spaces + "   -->     incorrect lidar spin down response")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._show_messages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def lidarSpinDown(self):
         self._lidarSpinDown()
@@ -2234,18 +2233,18 @@ class OpenPyLivox:
         if self._isConnected:
             self._waitForIdle()
             self._cmdSocket.sendto(self._CMD_LIDAR_STANDBY, (self._sensorIP, 65000))
-            if self._showMessages: print(
+            if self._show_messages: print(
                 "   " + self._sensorIP + self._format_spaces + "   <--     sent lidar stand-by request")
 
             # check for proper response from lidar stand-by request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(16)
-                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
+                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
 
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "0":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     if ret_code == 1:
-                        if self._showMessages: print(
+                        if self._show_messages: print(
                             "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to set lidar to stand-by")
                     else:
                         self._isData = False
@@ -2255,10 +2254,10 @@ class OpenPyLivox:
                         self._isWriting = False
                         time.sleep(0.1)
                 else:
-                    if self._showMessages: print(
+                    if self._show_messages: print(
                         "   " + self._sensorIP + self._format_spaces + "   -->     incorrect lidar stand-by response")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._show_messages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def lidarStandBy(self):
         self._lidarStandBy()
@@ -2271,22 +2270,22 @@ class OpenPyLivox:
         if self._isConnected:
             if not self._isData:
                 self._captureStream = _dataCaptureThread(self._sensorIP, self._dataSocket, "", 0, 0, 0, 0,
-                                                         self._showMessages, self._format_spaces, self._deviceType)
+                                                         self._show_messages, self._format_spaces, self._deviceType)
                 time.sleep(0.12)
                 self._waitForIdle()
                 self._cmdSocket.sendto(self._CMD_DATA_START, (self._sensorIP, 65000))
-                if self._showMessages: print(
+                if self._show_messages: print(
                     "   " + self._sensorIP + self._format_spaces + "   <--     sent start data stream request")
 
                 # check for proper response from data start request
                 if select.select([self._cmdSocket], [], [], 0.1)[0]:
                     binData, addr = self._cmdSocket.recvfrom(16)
-                    _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
+                    _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
 
                     if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "4":
                         ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                         if ret_code == 1:
-                            if self._showMessages: print(
+                            if self._show_messages: print(
                                 "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to start data stream")
                             if self._captureStream is not None:
                                 self._captureStream.stop()
@@ -2295,36 +2294,36 @@ class OpenPyLivox:
                         else:
                             self._isData = True
                     else:
-                        if self._showMessages:
+                        if self._show_messages:
                             print(
                                 "   " + self._sensorIP + self._format_spaces + "   -->     incorrect start data stream response")
             else:
-                if self._showMessages: print(
+                if self._show_messages: print(
                     "   " + self._sensorIP + self._format_spaces + "   -->     data stream already started")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._show_messages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def _dataStart_RT(self):
 
         if self._isConnected:
             if not self._isData:
                 self._captureStream = _dataCaptureThread(self._sensorIP, self._dataSocket, "", 1, 0, 0, 0,
-                                                         self._showMessages, self._format_spaces, self._deviceType)
+                                                         self._show_messages, self._format_spaces, self._deviceType)
                 time.sleep(0.12)
                 self._waitForIdle()
                 self._cmdSocket.sendto(self._CMD_DATA_START, (self._sensorIP, 65000))
-                if self._showMessages: print(
+                if self._show_messages: print(
                     "   " + self._sensorIP + self._format_spaces + "   <--     sent start data stream request")
 
                 # check for proper response from data start request
                 if select.select([self._cmdSocket], [], [], 0.1)[0]:
                     binData, addr = self._cmdSocket.recvfrom(16)
-                    _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
+                    _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
 
                     if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "4":
                         ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                         if ret_code == 1:
-                            if self._showMessages: print(
+                            if self._show_messages: print(
                                 "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to start data stream")
                             if self._captureStream is not None:
                                 self._captureStream.stop()
@@ -2333,13 +2332,13 @@ class OpenPyLivox:
                         else:
                             self._isData = True
                     else:
-                        if self._showMessages: print(
+                        if self._show_messages: print(
                             "   " + self._sensorIP + self._format_spaces + "   -->     incorrect start data stream response")
             else:
-                if self._showMessages: print(
+                if self._show_messages: print(
                     "   " + self._sensorIP + self._format_spaces + "   -->     data stream already started")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._show_messages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     @deprecated(version='1.1.0', reason="You should use .dataStart_RT_B() instead")
     def dataStart_RT(self):
@@ -2352,22 +2351,22 @@ class OpenPyLivox:
         if self._isConnected:
             if not self._isData:
                 self._captureStream = _dataCaptureThread(self._sensorIP, self._dataSocket, self._imuSocket, "", 2, 0, 0,
-                                                         0, self._showMessages, self._format_spaces, self._deviceType)
+                                                         0, self._show_messages, self._format_spaces, self._deviceType)
                 time.sleep(0.12)
                 self._waitForIdle()
                 self._cmdSocket.sendto(self._CMD_DATA_START, (self._sensorIP, 65000))
-                if self._showMessages: print(
+                if self._show_messages: print(
                     "   " + self._sensorIP + self._format_spaces + "   <--     sent start data stream request")
 
                 # check for proper response from data start request
                 if select.select([self._cmdSocket], [], [], 0.1)[0]:
                     binData, addr = self._cmdSocket.recvfrom(16)
-                    _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
+                    _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
 
                     if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "4":
                         ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                         if ret_code == 1:
-                            if self._showMessages: print(
+                            if self._show_messages: print(
                                 "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to start data stream")
                             if self._captureStream is not None:
                                 self._captureStream.stop()
@@ -2376,13 +2375,13 @@ class OpenPyLivox:
                         else:
                             self._isData = True
                     else:
-                        if self._showMessages: print(
+                        if self._show_messages: print(
                             "   " + self._sensorIP + self._format_spaces + "   -->     incorrect start data stream response")
             else:
-                if self._showMessages: print(
+                if self._show_messages: print(
                     "   " + self._sensorIP + self._format_spaces + "   -->     data stream already started")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._show_messages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def dataStart_RT_B(self):
         self._dataStart_RT_B()
@@ -2395,18 +2394,18 @@ class OpenPyLivox:
             if self._isData:
                 self._waitForIdle()
                 self._cmdSocket.sendto(self._CMD_DATA_STOP, (self._sensorIP, 65000))
-                if self._showMessages: print(
+                if self._show_messages: print(
                     "   " + self._sensorIP + self._format_spaces + "   <--     sent stop data stream request")
 
                 # check for proper response from data stop request
                 if select.select([self._cmdSocket], [], [], 0.1)[0]:
                     binData, addr = self._cmdSocket.recvfrom(16)
-                    _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
+                    _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
 
                     if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "4":
                         ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                         if ret_code == 1:
-                            if self._showMessages: print(
+                            if self._show_messages: print(
                                 "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to stop data stream")
                         else:
                             self._isData = False
@@ -2416,13 +2415,13 @@ class OpenPyLivox:
                             self._isWriting = False
                             time.sleep(0.1)
                     else:
-                        if self._showMessages: print(
+                        if self._show_messages: print(
                             "   " + self._sensorIP + self._format_spaces + "   -->     incorrect stop data stream response")
             else:
-                if self._showMessages: print(
+                if self._show_messages: print(
                     "   " + self._sensorIP + self._format_spaces + "   -->     data stream already stopped")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._show_messages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def dataStop(self):
         self._dataStop()
@@ -2438,26 +2437,26 @@ class OpenPyLivox:
             # check for proper response from dynamic IP request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(16)
-                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
+                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
 
                 if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "8":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     if ret_code == 0:
-                        if self._showMessages: print(
+                        if self._show_messages: print(
                             "Changed IP from " + self._sensorIP + " to dynamic IP (DHCP assigned)")
                         self.disconnect()
 
-                        if self._showMessages: print("\n********** PROGRAM ENDED - MUST REBOOT SENSOR **********\n")
+                        if self._show_messages: print("\n********** PROGRAM ENDED - MUST REBOOT SENSOR **********\n")
                         sys.exit(4)
                     else:
-                        if self._showMessages: print(
+                        if self._show_messages: print(
                             "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to change to dynamic IP (DHCP assigned)")
                 else:
-                    if self._showMessages: print(
+                    if self._show_messages: print(
                         "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to change to dynamic IP (DHCP assigned)")
 
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._show_messages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def setStaticIP(self, ipAddress):
 
@@ -2491,55 +2490,55 @@ class OpenPyLivox:
                 # check for proper response from static IP request
                 if select.select([self._cmdSocket], [], [], 0.1)[0]:
                     binData, addr = self._cmdSocket.recvfrom(16)
-                    _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
+                    _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
 
                     if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "8":
                         ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
 
                         if ret_code == 0:
-                            if self._showMessages: print(
+                            if self._show_messages: print(
                                 "Changed IP from " + self._sensorIP + " to a static IP of " + formattedIP)
                             self.disconnect()
 
-                            if self._showMessages: print("\n********** PROGRAM ENDED - MUST REBOOT SENSOR **********\n")
+                            if self._show_messages: print("\n********** PROGRAM ENDED - MUST REBOOT SENSOR **********\n")
                             sys.exit(5)
                         else:
-                            if self._showMessages: print(
+                            if self._show_messages: print(
                                 "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to change static IP (must be " + ipRange + ")")
                     else:
-                        if self._showMessages: print(
+                        if self._show_messages: print(
                             "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to change static IP (must be " + ipRange + ")")
             else:
-                if self._showMessages: print(
+                if self._show_messages: print(
                     "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to change static IP (must be " + ipRange + ")")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._show_messages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def _setCartesianCS(self):
 
         if self._isConnected:
             self._waitForIdle()
             self._cmdSocket.sendto(self._CMD_CARTESIAN_CS, (self._sensorIP, 65000))
-            if self._showMessages: print(
+            if self._show_messages: print(
                 "   " + self._sensorIP + self._format_spaces + "   <--     sent change to Cartesian coordinates request")
 
             # check for proper response from change coordinate system request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(16)
-                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
+                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
 
                 if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "5":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     if ret_code == 1:
-                        if self._showMessages: print(
+                        if self._show_messages: print(
                             "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to set Cartesian coordinate output")
                     elif ret_code == 0:
                         self._coordSystem = 0
                 else:
-                    if self._showMessages: print(
+                    if self._show_messages: print(
                         "   " + self._sensorIP + self._format_spaces + "   -->     incorrect change coordinate system response (Cartesian)")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._show_messages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def setCartesianCS(self):
         self._setCartesianCS()
@@ -2551,26 +2550,26 @@ class OpenPyLivox:
         if self._isConnected:
             self._waitForIdle()
             self._cmdSocket.sendto(self._CMD_SPHERICAL_CS, (self._sensorIP, 65000))
-            if self._showMessages: print(
+            if self._show_messages: print(
                 "   " + self._sensorIP + self._format_spaces + "   <--     sent change to Spherical coordinates request")
 
             # check for proper response from change coordinate system request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(16)
-                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
+                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
 
                 if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "5":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     if ret_code == 1:
-                        if self._showMessages: print(
+                        if self._show_messages: print(
                             "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to set Spherical coordinate output")
                     elif ret_code == 0:
                         self._coordSystem = 1
                 else:
-                    if self._showMessages: print(
+                    if self._show_messages: print(
                         "   " + self._sensorIP + self._format_spaces + "   -->     incorrect change coordinate system response (Spherical)")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._show_messages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def setSphericalCS(self):
         self._setSphericalCS()
@@ -2582,18 +2581,18 @@ class OpenPyLivox:
         if self._isConnected:
             self._waitForIdle()
             self._cmdSocket.sendto(self._CMD_READ_EXTRINSIC, (self._sensorIP, 65000))
-            if self._showMessages: print(
+            if self._show_messages: print(
                 "   " + self._sensorIP + self._format_spaces + "   <--     sent read extrinsic parameters request")
 
             # check for proper response from read extrinsics request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(40)
-                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
+                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
 
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "2":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     if ret_code == 1:
-                        if self._showMessages: print(
+                        if self._show_messages: print(
                             "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to read extrinsic parameters")
                     elif ret_code == 0:
                         roll = struct.unpack('<f', binData[12:16])[0]
@@ -2613,36 +2612,36 @@ class OpenPyLivox:
                         # called only to print the extrinsic parameters to the screen if .showMessages(True)
                         ack = self.extrinsicParameters()
                 else:
-                    if self._showMessages: print(
+                    if self._show_messages: print(
                         "   " + self._sensorIP + self._format_spaces + "   -->     incorrect read extrinsics response")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._show_messages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def setExtrinsicToZero(self):
 
         if self._isConnected:
             self._waitForIdle()
             self._cmdSocket.sendto(self._CMD_WRITE_ZERO_EO, (self._sensorIP, 65000))
-            if self._showMessages: print(
+            if self._show_messages: print(
                 "   " + self._sensorIP + self._format_spaces + "   <--     sent set extrinsic parameters to zero request")
 
             # check for proper response from write extrinsics request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(16)
-                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
+                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
 
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "1":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     if ret_code == 1:
-                        if self._showMessages: print(
+                        if self._show_messages: print(
                             "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to set extrinsic parameters to zero")
                     elif ret_code == 0:
                         self.readExtrinsic()
                 else:
-                    if self._showMessages: print(
+                    if self._show_messages: print(
                         "   " + self._sensorIP + self._format_spaces + "   -->     incorrect set extrinsics to zero response")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._show_messages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def setExtrinsicTo(self, x, y, z, roll, pitch, yaw):
 
@@ -2658,7 +2657,7 @@ class OpenPyLivox:
 
             except:
                 goodValues = False
-                if self._showMessages: print(
+                if self._show_messages: print(
                     "*** Error - one or more of the extrinsic values specified are not of the correct type ***")
 
             if goodValues:
@@ -2678,26 +2677,26 @@ class OpenPyLivox:
 
                 self._waitForIdle()
                 self._cmdSocket.sendto(setExtValues, (self._sensorIP, 65000))
-                if self._showMessages: print(
+                if self._show_messages: print(
                     "   " + self._sensorIP + self._format_spaces + "   <--     sent set extrinsic parameters request")
 
                 # check for proper response from write extrinsics request
                 if select.select([self._cmdSocket], [], [], 0.1)[0]:
                     binData, addr = self._cmdSocket.recvfrom(16)
-                    _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
+                    _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
 
                     if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "1":
                         ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                         if ret_code == 1:
-                            if self._showMessages: print(
+                            if self._show_messages: print(
                                 "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to set extrinsic parameters")
                         elif ret_code == 0:
                             self.readExtrinsic()
                     else:
-                        if self._showMessages: print(
+                        if self._show_messages: print(
                             "   " + self._sensorIP + self._format_spaces + "   -->     incorrect set extrinsic parameters response")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._show_messages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def _updateUTC(self, year, month, day, hour, microsec):
 
@@ -2739,24 +2738,24 @@ class OpenPyLivox:
 
             self._waitForIdle()
             self._cmdSocket.sendto(setUTCValues, (self._sensorIP, 65000))
-            if self._showMessages: print(
+            if self._show_messages: print(
                 "   " + self._sensorIP + self._format_spaces + "   <--     sent update UTC request")
 
             # check for proper response from update UTC request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(16)
-                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
+                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
 
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "10":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     if ret_code == 1:
-                        if self._showMessages: print(
+                        if self._show_messages: print(
                             "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to update UTC values")
                 else:
-                    if self._showMessages: print(
+                    if self._show_messages: print(
                         "   " + self._sensorIP + self._format_spaces + "   -->     incorrect update UTC values response")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._show_messages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def updateUTC(self, year, month, day, hour, microsec):
         self._updateUTC(year, month, day, hour, microsec)
@@ -2769,28 +2768,28 @@ class OpenPyLivox:
             self._waitForIdle()
             if OnOff:
                 self._cmdSocket.sendto(self._CMD_RAIN_FOG_ON, (self._sensorIP, 65000))
-                if self._showMessages: print(
+                if self._show_messages: print(
                     "   " + self._sensorIP + self._format_spaces + "   <--     sent turn on rain/fog suppression request")
             else:
                 self._cmdSocket.sendto(self._CMD_RAIN_FOG_OFF, (self._sensorIP, 65000))
-                if self._showMessages: print(
+                if self._show_messages: print(
                     "   " + self._sensorIP + self._format_spaces + "   <--     sent turn off rain/fog suppression request")
 
             # check for proper response from change rain/fog suppression request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(16)
-                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
+                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
 
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "3":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     if ret_code == 1:
-                        if self._showMessages: print(
+                        if self._show_messages: print(
                             "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to set rain/fog suppression value")
                 else:
-                    if self._showMessages: print(
+                    if self._show_messages: print(
                         "   " + self._sensorIP + self._format_spaces + "   -->     incorrect set rain/fog suppression response")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._show_messages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def setRainFogSuppression(self, OnOff):
         self._setRainFogSuppression(OnOff)
@@ -2803,28 +2802,28 @@ class OpenPyLivox:
             self._waitForIdle()
             if OnOff:
                 self._cmdSocket.sendto(self._CMD_FAN_ON, (self._sensorIP, 65000))
-                if self._showMessages: print(
+                if self._show_messages: print(
                     "   " + self._sensorIP + self._format_spaces + "   <--     sent turn on fan request")
             else:
                 self._cmdSocket.sendto(self._CMD_FAN_OFF, (self._sensorIP, 65000))
-                if self._showMessages: print(
+                if self._show_messages: print(
                     "   " + self._sensorIP + self._format_spaces + "   <--     sent turn off fan request")
 
             # check for proper response from change fan request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(16)
-                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
+                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
 
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "4":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     if ret_code == 1:
-                        if self._showMessages: print(
+                        if self._show_messages: print(
                             "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to set fan value")
                 else:
-                    if self._showMessages: print(
+                    if self._show_messages: print(
                         "   " + self._sensorIP + self._format_spaces + "   -->     incorrect set fan response")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._show_messages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def setFan(self, OnOff):
         self._setFan(OnOff)
@@ -2837,27 +2836,27 @@ class OpenPyLivox:
             self._waitForIdle()
 
             self._cmdSocket.sendto(self._CMD_GET_FAN, (self._sensorIP, 65000))
-            if self._showMessages: print(
+            if self._show_messages: print(
                 "   " + self._sensorIP + self._format_spaces + "   <--     sent get fan state request")
 
             # check for proper response from get fan request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(17)
-                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
+                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
 
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "5":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     if ret_code == 1:
-                        if self._showMessages: print(
+                        if self._show_messages: print(
                             "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to get fan state value")
                     elif ret_code == 0:
                         value = struct.unpack('<B', binData[12:13])[0]
                         print("   " + self._sensorIP + self._format_spaces + "   -->     fan state: " + str(value))
                 else:
-                    if self._showMessages: print(
+                    if self._show_messages: print(
                         "   " + self._sensorIP + self._format_spaces + "   -->     incorrect get fan state response")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._show_messages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def getFan(self):
         self._getFan()
@@ -2871,34 +2870,34 @@ class OpenPyLivox:
             # single first return
             if Mode_ID == 0:
                 self._cmdSocket.sendto(self._CMD_LIDAR_SINGLE_1ST, (self._sensorIP, 65000))
-                if self._showMessages: print(
+                if self._show_messages: print(
                     "   " + self._sensorIP + self._format_spaces + "   <--     sent single first return lidar mode request")
             # single strongest return
             elif Mode_ID == 1:
                 self._cmdSocket.sendto(self._CMD_LIDAR_SINGLE_STRONGEST, (self._sensorIP, 65000))
-                if self._showMessages: print(
+                if self._show_messages: print(
                     "   " + self._sensorIP + self._format_spaces + "   <--     sent single strongest return lidar mode request")
             # dual returns
             elif Mode_ID == 2:
                 self._cmdSocket.sendto(self._CMD_LIDAR_DUAL, (self._sensorIP, 65000))
-                if self._showMessages: print(
+                if self._show_messages: print(
                     "   " + self._sensorIP + self._format_spaces + "   <--     sent dual return lidar mode request")
 
             # check for proper response from change lidar mode request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(16)
-                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
+                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
 
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "6":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     if ret_code == 1:
-                        if self._showMessages: print(
+                        if self._show_messages: print(
                             "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to set lidar mode value")
                 else:
-                    if self._showMessages: print(
+                    if self._show_messages: print(
                         "   " + self._sensorIP + self._format_spaces + "   -->     incorrect set lidar mode response")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._show_messages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def setIMUdataPush(self, OnOff):
 
@@ -2907,28 +2906,28 @@ class OpenPyLivox:
 
             if OnOff:
                 self._cmdSocket.sendto(self._CMD_IMU_DATA_ON, (self._sensorIP, 65000))
-                if self._showMessages: print(
+                if self._show_messages: print(
                     "   " + self._sensorIP + self._format_spaces + "   <--     sent start IMU data push request")
             else:
                 self._cmdSocket.sendto(self._CMD_IMU_DATA_OFF, (self._sensorIP, 65000))
-                if self._showMessages: print(
+                if self._show_messages: print(
                     "   " + self._sensorIP + self._format_spaces + "   <--     sent stop IMU data push request")
 
             # check for proper response from start/start IMU data push request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(16)
-                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
+                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
 
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "8":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     if ret_code == 1:
-                        if self._showMessages: print(
+                        if self._show_messages: print(
                             "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to set IMU data push value")
                 else:
-                    if self._showMessages: print(
+                    if self._show_messages: print(
                         "   " + self._sensorIP + self._format_spaces + "   -->     incorrect set IMU data push response")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._show_messages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def getIMUdataPush(self):
 
@@ -2936,27 +2935,27 @@ class OpenPyLivox:
             self._waitForIdle()
 
             self._cmdSocket.sendto(self._CMD_GET_IMU, (self._sensorIP, 65000))
-            if self._showMessages: print(
+            if self._show_messages: print(
                 "   " + self._sensorIP + self._format_spaces + "   <--     sent get IMU push state request")
 
             # check for proper response from get IMU request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(17)
-                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._showMessages, binData)
+                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
 
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "9":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     if ret_code == 1:
-                        if self._showMessages: print(
+                        if self._show_messages: print(
                             "   " + self._sensorIP + self._format_spaces + "   -->     FAILED to get IMU push state value")
                     elif ret_code == 0:
                         value = struct.unpack('<B', binData[12:13])[0]
                         print("   " + self._sensorIP + self._format_spaces + "   -->     IMU push state: " + str(value))
                 else:
-                    if self._showMessages: print(
+                    if self._show_messages: print(
                         "   " + self._sensorIP + self._format_spaces + "   -->     incorrect get IMU push state response")
         else:
-            if self._showMessages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
+            if self._show_messages: print("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     @deprecated(version='1.0.2', reason="You should use saveDataToFile instead")
     def saveDataToCSV(self, filePathAndName, secsToWait, duration):
@@ -2970,27 +2969,27 @@ class OpenPyLivox:
                         firmwareType = 1
 
                     if duration < 0:
-                        if self._showMessages: print(
+                        if self._show_messages: print(
                             "   " + self._sensorIP + self._format_spaces + "   -->     * ISSUE: saving data, negative duration")
                     else:
                         # max duration = 4 years - 1 sec
                         if duration >= 126230400:
-                            if self._showMessages: print(
+                            if self._show_messages: print(
                                 "   " + self._sensorIP + self._format_spaces + "   -->     * ISSUE: saving data, duration too big")
                         else:
 
                             if secsToWait < 0:
-                                if self._showMessages: print(
+                                if self._show_messages: print(
                                     "   " + self._sensorIP + self._format_spaces + "   -->     * ISSUE: saving data, negative time to wait")
                             else:
                                 # max time to wait = 15 mins
                                 if secsToWait > 900:
-                                    if self._showMessages: print(
+                                    if self._show_messages: print(
                                         "   " + self._sensorIP + self._format_spaces + "   -->     * ISSUE: saving data, time to wait too big")
                                 else:
 
                                     if filePathAndName == "":
-                                        if self._showMessages: print(
+                                        if self._show_messages: print(
                                             "   " + self._sensorIP + self._format_spaces + "   -->     * ISSUE: saving data, file path and name missing")
                                     else:
 
@@ -3002,14 +3001,14 @@ class OpenPyLivox:
                                         self._captureStream.secsToWait = secsToWait
                                         self._captureStream.duration = duration
                                         self._captureStream.firmwareType = firmwareType
-                                        self._captureStream._showMessages = self._showMessages
+                                        self._captureStream._showMessages = self._show_messages
                                         time.sleep(0.1)
                                         self._captureStream.isCapturing = True
                 else:
-                    if self._showMessages: print(
+                    if self._show_messages: print(
                         "   " + self._sensorIP + self._format_spaces + "   -->     unknown firmware version")
             else:
-                if self._showMessages: print(
+                if self._show_messages: print(
                     "   " + self._sensorIP + self._format_spaces + "   -->     WARNING: data stream not started, no CSV file created")
 
     @deprecated(version='1.0.2', reason="You should use closeFile instead")
@@ -3031,27 +3030,27 @@ class OpenPyLivox:
                         firmwareType = 1
 
                     if duration < 0:
-                        if self._showMessages: print(
+                        if self._show_messages: print(
                             "   " + self._sensorIP + self._format_spaces + "   -->     * ISSUE: saving data, negative duration")
                     else:
                         # max duration = 4 years - 1 sec
                         if duration >= 126230400:
-                            if self._showMessages: print(
+                            if self._show_messages: print(
                                 "   " + self._sensorIP + self._format_spaces + "   -->     * ISSUE: saving data, duration too big")
                         else:
 
                             if secsToWait < 0:
-                                if self._showMessages: print(
+                                if self._show_messages: print(
                                     "   " + self._sensorIP + self._format_spaces + "   -->     * ISSUE: saving data, negative time to wait")
                             else:
                                 # max time to wait = 15 mins
                                 if secsToWait > 900:
-                                    if self._showMessages: print(
+                                    if self._show_messages: print(
                                         "   " + self._sensorIP + self._format_spaces + "   -->     * ISSUE: saving data, time to wait too big")
                                 else:
 
                                     if filePathAndName == "":
-                                        if self._showMessages: print(
+                                        if self._show_messages: print(
                                             "   " + self._sensorIP + self._format_spaces + "   -->     * ISSUE: saving data, file path and name missing")
                                     else:
 
@@ -3060,14 +3059,14 @@ class OpenPyLivox:
                                         self._captureStream.secsToWait = secsToWait
                                         self._captureStream.duration = duration
                                         self._captureStream.firmwareType = firmwareType
-                                        self._captureStream._showMessages = self._showMessages
+                                        self._captureStream._showMessages = self._show_messages
                                         time.sleep(0.1)
                                         self._captureStream.isCapturing = True
                 else:
-                    if self._showMessages: print(
+                    if self._show_messages: print(
                         "   " + self._sensorIP + self._format_spaces + "   -->     unknown firmware version")
             else:
-                if self._showMessages: print(
+                if self._show_messages: print(
                     "   " + self._sensorIP + self._format_spaces + "   -->     WARNING: data stream not started, no data file created")
 
     def saveDataToFile(self, filePathAndName, secsToWait, duration):
@@ -3097,7 +3096,7 @@ class OpenPyLivox:
             self._mid100_sensors[i]._closeFile()
 
     def _resetShowMessages(self):
-        self._showMessages = self._init_showMessages
+        self._show_messages = self._init_show_messages
 
     def resetShowMessages(self):
         self._resetShowMessages()
@@ -3127,7 +3126,7 @@ class OpenPyLivox:
             cmdPorts.append(params[3])
             imuPorts.append(params[4])
 
-        if self._showMessages:
+        if self._show_messages:
             print("      Computer IP Address:    " + params[0])
             print("      Sensor IP Address(es):  " + str(sensorIPs))
             print("      Data Port Number(s):    " + str(dataPorts))
@@ -3139,7 +3138,7 @@ class OpenPyLivox:
 
     def extrinsicParameters(self):
         if self._isConnected:
-            if self._showMessages:
+            if self._show_messages:
                 print("      x: " + str(self._x) + " m")
                 print("      y: " + str(self._y) + " m")
                 print("      z: " + str(self._z) + " m")
@@ -3151,7 +3150,7 @@ class OpenPyLivox:
 
     def firmware(self):
         if self._isConnected:
-            if self._showMessages:
+            if self._show_messages:
                 print("   " + self._sensorIP + self._format_spaces + "   -->     F/W Version: " + self._firmware)
                 for i in range(len(self._mid100_sensors)):
                     print("   " + self._mid100_sensors[i]._sensorIP + self._mid100_sensors[
@@ -3161,13 +3160,13 @@ class OpenPyLivox:
 
     def serialNumber(self):
         if self._isConnected:
-            if self._showMessages: print(
+            if self._show_messages: print(
                 "   " + self._sensorIP + self._format_spaces + "   -->     Serial # " + self._serial)
 
             return self._serial
 
     def showMessages(self, new_value):
-        self._showMessages = bool(new_value)
+        self._show_messages = bool(new_value)
         for i in range(len(self._mid100_sensors)):
             self._mid100_sensors[i]._showMessages = bool(new_value)
 
@@ -3175,7 +3174,7 @@ class OpenPyLivox:
         if self._isConnected:
             if self._captureStream is not None:
                 codes = self._captureStream.statusCodes()
-                if self._showMessages:
+                if self._show_messages:
                     sys_mess = "UNKNOWN"
                     if codes[0] == 0:
                         sys_mess = "OK"
@@ -3278,7 +3277,7 @@ class OpenPyLivox:
                 return codes
 
             else:
-                if self._showMessages:
+                if self._show_messages:
                     print("      System Status:         UNKNOWN")
                     print("      Temperature Status:    UNKNOWN")
                     print("      Voltage Status:        UNKNOWN")
