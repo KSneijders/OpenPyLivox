@@ -1675,13 +1675,13 @@ class OpenPyLivox:
                                     else:
 
                                         self._isWriting = True
-                                        self._captureStream.filePathAndName = filePathAndName
-                                        self._captureStream.secsToWait = secsToWait
+                                        self._captureStream.file_path_and_name = filePathAndName
+                                        self._captureStream.secs_to_wait = secsToWait
                                         self._captureStream.duration = duration
-                                        self._captureStream.firmwareType = firmwareType
-                                        self._captureStream._showMessages = self._show_messages
+                                        self._captureStream.firmware_type = firmwareType
+                                        self._captureStream._show_messages = self._show_messages
                                         time.sleep(0.1)
-                                        self._captureStream.isCapturing = True
+                                        self._captureStream.is_capturing = True
                 else:
                     if self._show_messages: print(
                         "   " + self._sensorIP + self._format_spaces + "   -->     unknown firmware version")
