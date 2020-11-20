@@ -127,3 +127,17 @@ def _parse_resp(show_message, bin_data):
             print("CRC16 Checksum Error")
 
     return data_is_valid, cmd_message, data_message, data_id, data
+
+
+def adjust_duration(firmware_type, duration):
+    firmware_adjustments = {
+        1: 0.001,
+        2: 0.0005,
+        3: 0.00055,
+    }
+    # duration adjustment (trying to get exactly 100,000 points / sec)
+    if duration != 126230400:
+        if firmware_type not in firmware_adjustments.keys():
+            raise ValueError(f"Unknown firmware type: {firmware_type}")
+        return duration + (firmware_adjustments.get(firmware_type) * (duration / 2.0))
+    return duration

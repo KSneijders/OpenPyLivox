@@ -39,7 +39,7 @@ from deprecated import deprecated
 from tqdm import tqdm
 
 from openpylivox import helper
-from openpylivox.data_capture_thread import _dataCaptureThread
+from openpylivox.data_capture_thread import DataCaptureThread
 from openpylivox.heartbeat_thread import HeartbeatThread
 from openpylivox.helper import _parse_resp
 
@@ -889,8 +889,8 @@ class OpenPyLivox:
 
         if self._isConnected:
             if not self._isData:
-                self._captureStream = _dataCaptureThread(self._sensorIP, self._dataSocket, "", 0, 0, 0, 0,
-                                                         self._show_messages, self._format_spaces, self._deviceType)
+                self._captureStream = DataCaptureThread(self._sensorIP, self._dataSocket, "", 0, 0, 0, 0,
+                                                        self._show_messages, self._format_spaces, self._deviceType)
                 time.sleep(0.12)
                 self._waitForIdle()
                 self._cmdSocket.sendto(self._CMD_DATA_START, (self._sensorIP, 65000))
@@ -927,8 +927,8 @@ class OpenPyLivox:
 
         if self._isConnected:
             if not self._isData:
-                self._captureStream = _dataCaptureThread(self._sensorIP, self._dataSocket, "", 1, 0, 0, 0,
-                                                         self._show_messages, self._format_spaces, self._deviceType)
+                self._captureStream = DataCaptureThread(self._sensorIP, self._dataSocket, "", 1, 0, 0, 0,
+                                                        self._show_messages, self._format_spaces, self._deviceType)
                 time.sleep(0.12)
                 self._waitForIdle()
                 self._cmdSocket.sendto(self._CMD_DATA_START, (self._sensorIP, 65000))
@@ -970,8 +970,8 @@ class OpenPyLivox:
 
         if self._isConnected:
             if not self._isData:
-                self._captureStream = _dataCaptureThread(self._sensorIP, self._dataSocket, self._imuSocket, "", 2, 0, 0,
-                                                         0, self._show_messages, self._format_spaces, self._deviceType)
+                self._captureStream = DataCaptureThread(self._sensorIP, self._dataSocket, self._imuSocket, "", 2, 0, 0,
+                                                        0, self._show_messages, self._format_spaces, self._deviceType)
                 time.sleep(0.12)
                 self._waitForIdle()
                 self._cmdSocket.sendto(self._CMD_DATA_START, (self._sensorIP, 65000))

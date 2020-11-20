@@ -3,31 +3,33 @@ import struct
 import threading
 from pathlib import Path
 
+from openpylivox import helper
 
-class _dataCaptureThread(object):
 
-    def __init__(self, sensorIP, data_socket, imu_socket, filePathAndName, fileType, secsToWait, duration, firmwareType,
-                 showMessages, format_spaces, deviceType):
+class DataCaptureThread(object):
 
-        self.startTime = -1
-        self.sensorIP = sensorIP
+    def __init__(self, sensor_ip, data_socket, imu_socket, file_path_and_name, file_type, secs_to_wait, duration,
+                 firmware_type, show_messages, format_spaces, device_type):
+
+        self.start_time = -1
+        self.sensor_ip = sensor_ip
         self.d_socket = data_socket
         self.i_socket = imu_socket
-        self.filePathAndName = filePathAndName
+        self.file_path_and_name = file_path_and_name
         # fileType 0 = Stored ASCII, 1 = Real-time ASCII, 2 = Real-time BINARY
-        self.fileType = fileType
-        self.secsToWait = secsToWait
+        self.file_type = file_type
+        self.secs_to_wait = secs_to_wait
         self.duration = duration
-        self.firmwareType = firmwareType
+        self.firmware_type = firmware_type
         self.started = True
-        self.isCapturing = False
-        self.dataType = -1
-        self.numPts = 0
-        self.nullPts = 0
+        self.is_capturing = False
+        self.data_type = -1
+        self.num_pts = 0
+        self.null_pts = 0
         self.imu_records = 0
-        self._showMessages = showMessages
+        self._show_messages = show_messages
         self._format_spaces = format_spaces
-        self._deviceType = deviceType
+        self._device_type = device_type
         self.system_status = -1
         self.temp_status = -1
         self.volt_status = -1
@@ -43,19 +45,18 @@ class _dataCaptureThread(object):
 
         if duration == 0:
             years = 4
-            amount_of_leap_days = int(years/4)
+            amount_of_leap_days = int(years / 4)
             seconds_per_day = 60 * 60 * 24
             # 4 Years of time in seconds
             self.duration = seconds_per_day * (365 * years + amount_of_leap_days)
 
-        self.thread = None
-
-        if self.fileType == 1:
-            self.thread = threading.Thread(target=self.run_realtime_csv, args=())
-        elif self.fileType == 2:
-            self.thread = threading.Thread(target=self.run_realtime_bin, args=())
+        if self.file_type == 1:
+            callback = self.run_realtime_csv
+        elif self.file_type == 2:
+            callback = self.run_realtime_bin
         else:
-            self.thread = threading.Thread(target=self.run, args=())
+            callback = self.run
+        self.thread = threading.Thread(target=callback, args=())
 
         self.thread.daemon = True
         self.thread.start()
@@ -65,26 +66,25 @@ class _dataCaptureThread(object):
         # read point cloud data packet to get packet version and datatype
         # keep looping to 'consume' data that we don't want included in the captured point cloud data
 
-        breakByCapture = False
+        break_by_capture = False
         while True:
-
             if self.started:
-                selectTest = select.select([self.d_socket], [], [], 0)
-                if selectTest[0]:
+                select_test = select.select([self.d_socket], [], [], 0)
+                if select_test[0]:
                     data_pc, addr = self.d_socket.recvfrom(1500)
                     version = int.from_bytes(data_pc[0:1], byteorder='little')
-                    self.dataType = int.from_bytes(data_pc[9:10], byteorder='little')
+                    self.data_type = int.from_bytes(data_pc[9:10], byteorder='little')
                     timestamp_type = int.from_bytes(data_pc[8:9], byteorder='little')
                     timestamp1 = self.getTimestamp(data_pc[10:18], timestamp_type)
                     self.updateStatus(data_pc[4:8])
-                    if self.isCapturing:
-                        self.startTime = timestamp1
-                        breakByCapture = True
+                    if self.is_capturing:
+                        self.start_time = timestamp1
+                        break_by_capture = True
                         break
             else:
                 break
 
-        if breakByCapture:
+        if break_by_capture:
 
             # check data packet is as expected (first byte anyways)
             if version == 5:
@@ -102,11 +102,11 @@ class _dataCaptureThread(object):
                 returnNums = []
 
                 # delayed start to capturing data check (secsToWait parameter)
-                timestamp2 = self.startTime
+                timestamp2 = self.start_time
                 while True:
                     if self.started:
-                        timeSinceStart = timestamp2 - self.startTime
-                        if timeSinceStart <= self.secsToWait:
+                        time_since_start = timestamp2 - self.start_time
+                        if time_since_start <= self.secs_to_wait:
                             # read data from receive buffer and keep 'consuming' it
                             if select.select([self.d_socket], [], [], 0)[0]:
                                 data_pc, addr = self.d_socket.recvfrom(1500)
@@ -114,30 +114,23 @@ class _dataCaptureThread(object):
                                 timestamp2 = self.getTimestamp(data_pc[10:18], timestamp_type)
                                 self.updateStatus(data_pc[4:8])
                         else:
-                            self.startTime = timestamp2
+                            self.start_time = timestamp2
                             break
                     else:
                         break
 
-                if self._showMessages: print(
-                    "   " + self.sensorIP + self._format_spaces + self._format_spaces + "   -->     CAPTURING DATA...")
+                if self._show_messages:
+                    print(f"   {self.sensor_ip}{self._format_spaces * 2}   -->     CAPTURING DATA...")
 
-                # duration adjustment (trying to get exactly 100,000 points / sec)
-                if self.duration != 126230400:
-                    if self.firmwareType == 1:
-                        self.duration += (0.001 * (self.duration / 2.0))
-                    elif self.firmwareType == 2:
-                        self.duration += (0.0005 * (self.duration / 2.0))
-                    elif self.firmwareType == 3:
-                        self.duration += (0.00055 * (self.duration / 2.0))
+                self.duration = helper.adjust_duration(self.firmware_type, self.duration)
 
-                timestamp_sec = self.startTime
+                timestamp_sec = self.start_time
                 # main loop that captures the desired point cloud data
                 while True:
                     if self.started:
-                        timeSinceStart = timestamp_sec - self.startTime
+                        time_since_start = timestamp_sec - self.start_time
 
-                        if timeSinceStart <= self.duration:
+                        if time_since_start <= self.duration:
 
                             # read data from receive buffer
                             if select.select([self.d_socket], [], [], 0)[0]:
@@ -158,12 +151,12 @@ class _dataCaptureThread(object):
                                 bytePos = 18
 
                                 # single return firmware (most common)
-                                if self.firmwareType == 1:
+                                if self.firmware_type == 1:
                                     # to account for first point's timestamp being increment in the loop
                                     timestamp_sec -= 0.00001
 
                                     # Cartesian Coordinate System
-                                    if self.dataType == 0:
+                                    if self.data_type == 0:
                                         for i in range(0, 100):
                                             # X coordinate
                                             coord1 = data_pc[bytePos:bytePos + 4]
@@ -194,7 +187,7 @@ class _dataCaptureThread(object):
                                             intensities.append(intensity)
 
                                     # Spherical Coordinate System
-                                    elif self.dataType == 1:
+                                    elif self.data_type == 1:
                                         for i in range(0, 100):
                                             # distance
                                             coord1 = data_pc[bytePos:bytePos + 4]
@@ -225,12 +218,12 @@ class _dataCaptureThread(object):
                                             intensities.append(intensity)
 
                                 # double return firmware
-                                elif self.firmwareType == 2:
+                                elif self.firmware_type == 2:
                                     # to account for first point's timestamp being increment in the loop
                                     timestamp_sec -= 0.00001
 
                                     # Cartesian Coordinate System
-                                    if self.dataType == 0:
+                                    if self.data_type == 0:
                                         for i in range(0, 100):
                                             returnNum = 1
 
@@ -269,7 +262,7 @@ class _dataCaptureThread(object):
                                             returnNums.append(returnNum)
 
                                     # Spherical Coordinate System
-                                    elif self.dataType == 1:
+                                    elif self.data_type == 1:
                                         for i in range(0, 100):
                                             returnNum = 1
 
@@ -308,12 +301,12 @@ class _dataCaptureThread(object):
                                             returnNums.append(returnNum)
 
                                 # triple return firmware
-                                elif self.firmwareType == 3:
+                                elif self.firmware_type == 3:
                                     # to account for first point's timestamp being increment in the loop
                                     timestamp_sec -= 0.000016666
 
                                     # Cartesian Coordinate System
-                                    if self.dataType == 0:
+                                    if self.data_type == 0:
                                         for i in range(0, 100):
                                             returnNum = 1
 
@@ -352,7 +345,7 @@ class _dataCaptureThread(object):
                                             returnNums.append(returnNum)
 
                                     # Spherical Coordinate System
-                                    elif self.dataType == 1:
+                                    elif self.data_type == 1:
                                         for i in range(0, 100):
                                             returnNum = 1
 
@@ -393,7 +386,7 @@ class _dataCaptureThread(object):
                         # duration check (exit point)
                         else:
                             self.started = False
-                            self.isCapturing = False
+                            self.is_capturing = False
                             break
                     # thread still running check (exit point)
                     else:
@@ -403,9 +396,9 @@ class _dataCaptureThread(object):
                 lenData = len(coord1s)
                 if lenData > 0:
 
-                    if self._showMessages: print(
-                        "   " + self.sensorIP + self._format_spaces + self._format_spaces + "   -->     writing data to ASCII file: " + self.filePathAndName)
-                    csvFile = open(self.filePathAndName, "w")
+                    if self._show_messages: print(
+                        "   " + self.sensor_ip + self._format_spaces + self._format_spaces + "   -->     writing data to ASCII file: " + self.file_path_and_name)
+                    csvFile = open(self.file_path_and_name, "w")
 
                     numPts = 0
                     nullPts = 0
@@ -415,10 +408,10 @@ class _dataCaptureThread(object):
                     # Geospatial/Traditional Photogrammetry/Computer Vision/North America/Europe all use different approaches
 
                     # single return fimware
-                    if self.firmwareType == 1:
+                    if self.firmware_type == 1:
 
                         # Cartesian
-                        if self.dataType == 0:
+                        if self.data_type == 0:
                             csvFile.write("//X,Y,Z,Inten-sity,Time\n")
                             for i in range(0, lenData):
                                 coord1 = round(float(struct.unpack('<i', coord1s[i])[0]) / 1000.0, 3)
@@ -435,7 +428,7 @@ class _dataCaptureThread(object):
                                     nullPts += 1
 
                         # Spherical
-                        elif self.dataType == 1:
+                        elif self.data_type == 1:
                             csvFile.write("//Distance,Zenith,Azimuth,Inten-sity,Time\n")
                             for i in range(0, lenData):
                                 coord1 = round(float(struct.unpack('<I', coord1s[i])[0]) / 1000.0, 3)
@@ -452,10 +445,10 @@ class _dataCaptureThread(object):
                                     nullPts += 1
 
                     # multiple returns firmware
-                    elif self.firmwareType == 2 or self.firmwareType == 3:
+                    elif self.firmware_type == 2 or self.firmware_type == 3:
 
                         # Cartesian
-                        if self.dataType == 0:
+                        if self.data_type == 0:
                             csvFile.write("//X,Y,Z,Inten-sity,Time,ReturnNum\n")
                             for i in range(0, lenData):
                                 coord1 = round(float(struct.unpack('<i', coord1s[i])[0]) / 1000.0, 3)
@@ -473,7 +466,7 @@ class _dataCaptureThread(object):
                                     nullPts += 1
 
                         # Spherical
-                        elif self.dataType == 1:
+                        elif self.data_type == 1:
                             csvFile.write("//Distance,Zenith,Azimuth,Inten-sity,Time,ReturnNum\n")
                             for i in range(0, lenData):
                                 coord1 = round(float(struct.unpack('<I', coord1s[i])[0]) / 1000.0, 3)
@@ -490,24 +483,24 @@ class _dataCaptureThread(object):
                                 else:
                                     nullPts += 1
 
-                    self.numPts = numPts
-                    self.nullPts = nullPts
+                    self.num_pts = numPts
+                    self.null_pts = nullPts
 
-                    if self._showMessages:
+                    if self._show_messages:
                         print(
-                            "   " + self.sensorIP + self._format_spaces + self._format_spaces + "   -->     closed ASCII file: " + self.filePathAndName)
+                            "   " + self.sensor_ip + self._format_spaces + self._format_spaces + "   -->     closed ASCII file: " + self.file_path_and_name)
                         print(
                             "                    (points: " + str(numPts) + " good, " + str(nullPts) + " null, " + str(
                                 numPts + nullPts) + " total)")
                     csvFile.close()
 
                 else:
-                    if self._showMessages: print(
-                        "   " + self.sensorIP + self._format_spaces + "   -->     WARNING: no point cloud data was captured")
+                    if self._show_messages: print(
+                        "   " + self.sensor_ip + self._format_spaces + "   -->     WARNING: no point cloud data was captured")
 
             else:
-                if self._showMessages: print(
-                    "   " + self.sensorIP + self._format_spaces + "   -->     Incorrect lidar packet version")
+                if self._show_messages: print(
+                    "   " + self.sensor_ip + self._format_spaces + "   -->     Incorrect lidar packet version")
 
     def run_realtime_csv(self):
 
@@ -522,12 +515,12 @@ class _dataCaptureThread(object):
                 if selectTest[0]:
                     data_pc, addr = self.d_socket.recvfrom(1500)
                     version = int.from_bytes(data_pc[0:1], byteorder='little')
-                    self.dataType = int.from_bytes(data_pc[9:10], byteorder='little')
+                    self.data_type = int.from_bytes(data_pc[9:10], byteorder='little')
                     timestamp_type = int.from_bytes(data_pc[8:9], byteorder='little')
                     timestamp1 = self.getTimestamp(data_pc[10:18], timestamp_type)
                     self.updateStatus(data_pc[4:8])
-                    if self.isCapturing:
-                        self.startTime = timestamp1
+                    if self.is_capturing:
+                        self.start_time = timestamp1
                         breakByCapture = True
                         break
             else:
@@ -539,11 +532,11 @@ class _dataCaptureThread(object):
             if version == 5:
 
                 # delayed start to capturing data check (secsToWait parameter)
-                timestamp2 = self.startTime
+                timestamp2 = self.start_time
                 while True:
                     if self.started:
-                        timeSinceStart = timestamp2 - self.startTime
-                        if timeSinceStart <= self.secsToWait:
+                        timeSinceStart = timestamp2 - self.start_time
+                        if timeSinceStart <= self.secs_to_wait:
                             # read data from receive buffer and keep 'consuming' it
                             if select.select([self.d_socket], [], [], 0)[0]:
                                 data_pc, addr = self.d_socket.recvfrom(1500)
@@ -551,48 +544,48 @@ class _dataCaptureThread(object):
                                 timestamp2 = self.getTimestamp(data_pc[10:18], timestamp_type)
                                 self.updateStatus(data_pc[4:8])
                         else:
-                            self.startTime = timestamp2
+                            self.start_time = timestamp2
                             break
                     else:
                         break
 
-                if self._showMessages: print(
-                    "   " + self.sensorIP + self._format_spaces + "   -->     CAPTURING DATA...")
+                if self._show_messages: print(
+                    "   " + self.sensor_ip + self._format_spaces + "   -->     CAPTURING DATA...")
 
                 # duration adjustment (trying to get exactly 100,000 points / sec)
                 if self.duration != 126230400:
-                    if self.firmwareType == 1:
+                    if self.firmware_type == 1:
                         self.duration += (0.001 * (self.duration / 2.0))
-                    elif self.firmwareType == 2:
+                    elif self.firmware_type == 2:
                         self.duration += (0.0005 * (self.duration / 2.0))
-                    elif self.firmwareType == 3:
+                    elif self.firmware_type == 3:
                         self.duration += (0.00055 * (self.duration / 2.0))
 
-                timestamp_sec = self.startTime
+                timestamp_sec = self.start_time
 
-                if self._showMessages: print(
-                    "   " + self.sensorIP + self._format_spaces + "   -->     writing real-time data to ASCII file: " + self.filePathAndName)
-                csvFile = open(self.filePathAndName, "w", 1)
+                if self._show_messages: print(
+                    "   " + self.sensor_ip + self._format_spaces + "   -->     writing real-time data to ASCII file: " + self.file_path_and_name)
+                csvFile = open(self.file_path_and_name, "w", 1)
 
                 numPts = 0
                 nullPts = 0
 
                 # write header info
-                if self.firmwareType == 1:  # single return firmware
-                    if self.dataType == 0:  # Cartesian
+                if self.firmware_type == 1:  # single return firmware
+                    if self.data_type == 0:  # Cartesian
                         csvFile.write("//X,Y,Z,Inten-sity,Time\n")
-                    elif self.dataType == 1:  # Spherical
+                    elif self.data_type == 1:  # Spherical
                         csvFile.write("//Distance,Zenith,Azimuth,Inten-sity,Time\n")
-                elif self.firmwareType == 2 or self.firmwareType == 3:  # double or triple return firmware
-                    if self.dataType == 0:  # Cartesian
+                elif self.firmware_type == 2 or self.firmware_type == 3:  # double or triple return firmware
+                    if self.data_type == 0:  # Cartesian
                         csvFile.write("//X,Y,Z,Inten-sity,Time,ReturnNum\n")
-                    elif self.dataType == 1:  # Spherical
+                    elif self.data_type == 1:  # Spherical
                         csvFile.write("//Distance,Zenith,Azimuth,Inten-sity,Time,ReturnNum\n")
 
                 # main loop that captures the desired point cloud data
                 while True:
                     if self.started:
-                        timeSinceStart = timestamp_sec - self.startTime
+                        timeSinceStart = timestamp_sec - self.start_time
 
                         if timeSinceStart <= self.duration:
 
@@ -615,12 +608,12 @@ class _dataCaptureThread(object):
                                 bytePos = 18
 
                                 # single return firmware (most common)
-                                if self.firmwareType == 1:
+                                if self.firmware_type == 1:
                                     # to account for first point's timestamp being increment in the loop
                                     timestamp_sec -= 0.00001
 
                                     # Cartesian Coordinate System
-                                    if self.dataType == 0:
+                                    if self.data_type == 0:
                                         for i in range(0, 100):
 
                                             # Y coordinate (check for non-zero)
@@ -652,7 +645,7 @@ class _dataCaptureThread(object):
                                                 bytePos += 13
 
                                     # Spherical Coordinate System
-                                    elif self.dataType == 1:
+                                    elif self.data_type == 1:
                                         for i in range(0, 100):
 
                                             # Distance coordinate (check for non-zero)
@@ -685,12 +678,12 @@ class _dataCaptureThread(object):
                                                 bytePos += 9
 
                                 # double return firmware
-                                elif self.firmwareType == 2:
+                                elif self.firmware_type == 2:
                                     # to account for first point's timestamp being increment in the loop
                                     timestamp_sec -= 0.00001
 
                                     # Cartesian Coordinate System
-                                    if self.dataType == 0:
+                                    if self.data_type == 0:
                                         for i in range(0, 100):
                                             returnNum = 1
 
@@ -729,7 +722,7 @@ class _dataCaptureThread(object):
                                                 bytePos += 13
 
                                                 # Spherical Coordinate System
-                                    elif self.dataType == 1:
+                                    elif self.data_type == 1:
                                         for i in range(0, 100):
                                             returnNum = 1
 
@@ -770,12 +763,12 @@ class _dataCaptureThread(object):
 
 
                                 # triple return firmware
-                                elif self.firmwareType == 3:
+                                elif self.firmware_type == 3:
                                     # to account for first point's timestamp being increment in the loop
                                     timestamp_sec -= 0.000016666
 
                                     # Cartesian Coordinate System
-                                    if self.dataType == 0:
+                                    if self.data_type == 0:
                                         for i in range(0, 100):
                                             returnNum = 1
 
@@ -815,7 +808,7 @@ class _dataCaptureThread(object):
 
 
                                     # Spherical Coordinate System
-                                    elif self.dataType == 1:
+                                    elif self.data_type == 1:
                                         for i in range(0, 100):
                                             returnNum = 1
 
@@ -857,26 +850,26 @@ class _dataCaptureThread(object):
                         # duration check (exit point)
                         else:
                             self.started = False
-                            self.isCapturing = False
+                            self.is_capturing = False
                             break
                     # thread still running check (exit point)
                     else:
                         break
 
-                self.numPts = numPts
-                self.nullPts = nullPts
+                self.num_pts = numPts
+                self.null_pts = nullPts
 
-                if self._showMessages:
+                if self._show_messages:
                     print(
-                        "   " + self.sensorIP + self._format_spaces + "   -->     closed ASCII file: " + self.filePathAndName)
+                        "   " + self.sensor_ip + self._format_spaces + "   -->     closed ASCII file: " + self.file_path_and_name)
                     print("                                (points: " + str(numPts) + " good, " + str(
                         nullPts) + " null, " + str(numPts + nullPts) + " total)")
 
                 csvFile.close()
 
             else:
-                if self._showMessages: print(
-                    "   " + self.sensorIP + self._format_spaces + "   -->     Incorrect lidar packet version")
+                if self._show_messages: print(
+                    "   " + self.sensor_ip + self._format_spaces + "   -->     Incorrect lidar packet version")
 
     def run_realtime_bin(self):
 
@@ -888,7 +881,7 @@ class _dataCaptureThread(object):
         # used to check if the sensor is a Mid-100
         deviceCheck = 0
         try:
-            deviceCheck = int(self._deviceType[4:7])
+            deviceCheck = int(self._device_type[4:7])
         except:
             pass
 
@@ -899,12 +892,12 @@ class _dataCaptureThread(object):
                 if selectTest[0]:
                     data_pc, addr = self.d_socket.recvfrom(1500)
                     version = int.from_bytes(data_pc[0:1], byteorder='little')
-                    self.dataType = int.from_bytes(data_pc[9:10], byteorder='little')
+                    self.data_type = int.from_bytes(data_pc[9:10], byteorder='little')
                     timestamp_type = int.from_bytes(data_pc[8:9], byteorder='little')
                     timestamp1 = self.getTimestamp(data_pc[10:18], timestamp_type)
                     self.updateStatus(data_pc[4:8])
-                    if self.isCapturing:
-                        self.startTime = timestamp1
+                    if self.is_capturing:
+                        self.start_time = timestamp1
                         breakByCapture = True
                         break
             else:
@@ -916,11 +909,11 @@ class _dataCaptureThread(object):
             if version == 5:
 
                 # delayed start to capturing data check (secsToWait parameter)
-                timestamp2 = self.startTime
+                timestamp2 = self.start_time
                 while True:
                     if self.started:
-                        timeSinceStart = timestamp2 - self.startTime
-                        if timeSinceStart <= self.secsToWait:
+                        timeSinceStart = timestamp2 - self.start_time
+                        if timeSinceStart <= self.secs_to_wait:
                             # read data from receive buffer and keep 'consuming' it
                             if select.select([self.d_socket], [], [], 0)[0]:
                                 data_pc, addr = self.d_socket.recvfrom(1500)
@@ -930,19 +923,19 @@ class _dataCaptureThread(object):
                             if select.select([self.i_socket], [], [], 0)[0]:
                                 imu_data, addr2 = self.i_socket.recvfrom(50)
                         else:
-                            self.startTime = timestamp2
+                            self.start_time = timestamp2
                             break
                     else:
                         break
 
-                if self._showMessages: print(
-                    "   " + self.sensorIP + self._format_spaces + "   -->     CAPTURING DATA...")
+                if self._show_messages: print(
+                    "   " + self.sensor_ip + self._format_spaces + "   -->     CAPTURING DATA...")
 
-                timestamp_sec = self.startTime
+                timestamp_sec = self.start_time
 
-                if self._showMessages: print(
-                    "   " + self.sensorIP + self._format_spaces + "   -->     writing real-time data to BINARY file: " + self.filePathAndName)
-                binFile = open(self.filePathAndName, "wb")
+                if self._show_messages: print(
+                    "   " + self.sensor_ip + self._format_spaces + "   -->     writing real-time data to BINARY file: " + self.file_path_and_name)
+                binFile = open(self.file_path_and_name, "wb")
                 IMU_file = None
 
                 IMU_reporting = False
@@ -952,13 +945,13 @@ class _dataCaptureThread(object):
 
                 # write header info to know how to parse the data later
                 binFile.write(str.encode("OPENPYLIVOX"))
-                binFile.write(struct.pack('<h', self.firmwareType))
-                binFile.write(struct.pack('<h', self.dataType))
+                binFile.write(struct.pack('<h', self.firmware_type))
+                binFile.write(struct.pack('<h', self.data_type))
 
                 # main loop that captures the desired point cloud data
                 while True:
                     if self.started:
-                        timeSinceStart = timestamp_sec - self.startTime
+                        timeSinceStart = timestamp_sec - self.start_time
 
                         if timeSinceStart <= self.duration:
 
@@ -982,7 +975,7 @@ class _dataCaptureThread(object):
 
                                 # single return firmware (relevant for Mid-40 and Mid-100)
                                 # Horizon and Tele-15 sensors also fall under this 'if' statement
-                                if self.firmwareType == 1:
+                                if self.firmware_type == 1:
 
                                     # Cartesian Coordinate System
                                     if dataType == 0:
@@ -1118,12 +1111,12 @@ class _dataCaptureThread(object):
                                             bytePos += 16
 
                                 # double return firmware (Mid-40 and Mid-100 only)
-                                elif self.firmwareType == 2:
+                                elif self.firmware_type == 2:
                                     # to account for first point's timestamp being increment in the loop
                                     timestamp_sec -= 0.00001
 
                                     # Cartesian Coordinate System
-                                    if self.dataType == 0:
+                                    if self.data_type == 0:
                                         for i in range(0, 100):
                                             returnNum = 1
 
@@ -1155,7 +1148,7 @@ class _dataCaptureThread(object):
                                             bytePos += 13
 
                                     # Spherical Coordinate System
-                                    elif self.dataType == 1:
+                                    elif self.data_type == 1:
                                         for i in range(0, 100):
                                             returnNum = 1
 
@@ -1181,12 +1174,12 @@ class _dataCaptureThread(object):
                                             bytePos += 9
 
                                 # triple return firmware (Mid-40 and Mid-100 only)
-                                elif self.firmwareType == 3:
+                                elif self.firmware_type == 3:
                                     # to account for first point's timestamp being increment in the loop
                                     timestamp_sec -= 0.000016667
 
                                     # Cartesian Coordinate System
-                                    if self.dataType == 0:
+                                    if self.data_type == 0:
                                         for i in range(0, 100):
                                             returnNum = 1
 
@@ -1218,7 +1211,7 @@ class _dataCaptureThread(object):
                                             bytePos += 13
 
                                     # Spherical Coordinate System
-                                    elif self.dataType == 1:
+                                    elif self.data_type == 1:
                                         for i in range(0, 100):
                                             returnNum = 1
 
@@ -1266,7 +1259,7 @@ class _dataCaptureThread(object):
                                 if dataType == 6:
                                     if not IMU_reporting:
                                         IMU_reporting = True
-                                        path_file = Path(self.filePathAndName)
+                                        path_file = Path(self.file_path_and_name)
                                         filename = path_file.stem
                                         exten = path_file.suffix
                                         IMU_file = open(filename + "_IMU" + exten, "wb")
@@ -1279,22 +1272,22 @@ class _dataCaptureThread(object):
                         # duration check (exit point)
                         else:
                             self.started = False
-                            self.isCapturing = False
+                            self.is_capturing = False
                             break
                     # thread still running check (exit point)
                     else:
                         break
 
-                self.numPts = numPts
-                self.nullPts = nullPts
+                self.num_pts = numPts
+                self.null_pts = nullPts
                 self.imu_records = imu_records
 
-                if self._showMessages:
+                if self._show_messages:
                     print(
-                        "   " + self.sensorIP + self._format_spaces + "   -->     closed BINARY file: " + self.filePathAndName)
+                        "   " + self.sensor_ip + self._format_spaces + "   -->     closed BINARY file: " + self.file_path_and_name)
                     print("                                (points: " + str(numPts) + " good, " + str(
                         nullPts) + " null, " + str(numPts + nullPts) + " total)")
-                    if self._deviceType == "Horizon" or self._deviceType == "Tele-15":
+                    if self._device_type == "Horizon" or self._device_type == "Tele-15":
                         print("                                (IMU records: " + str(imu_records) + ")")
 
                 binFile.close()
@@ -1303,8 +1296,8 @@ class _dataCaptureThread(object):
                     IMU_file.close()
 
             else:
-                if self._showMessages: print(
-                    "   " + self.sensorIP + self._format_spaces + "   -->     Incorrect packet version")
+                if self._show_messages: print(
+                    "   " + self.sensor_ip + self._format_spaces + "   -->     Incorrect packet version")
 
     def getTimestamp(self, data_pc, timestamp_type):
 
@@ -1349,31 +1342,31 @@ class _dataCaptureThread(object):
 
         # check if the system status in NOT normal
         if self.system_status:
-            if self._showMessages:
+            if self._show_messages:
                 if self.system_status == 1:
                     if self.temp_status == 1:
-                        print("   " + self.sensorIP + self._format_spaces + "   -->     * WARNING: temperature *")
+                        print("   " + self.sensor_ip + self._format_spaces + "   -->     * WARNING: temperature *")
                     if self.volt_status == 1:
-                        print("   " + self.sensorIP + self._format_spaces + "   -->     * WARNING: voltage *")
+                        print("   " + self.sensor_ip + self._format_spaces + "   -->     * WARNING: voltage *")
                     if self.motor_status == 1:
-                        print("   " + self.sensorIP + self._format_spaces + "   -->     * WARNING: motor *")
+                        print("   " + self.sensor_ip + self._format_spaces + "   -->     * WARNING: motor *")
                     if self.dirty_status == 1:
-                        print("   " + self.sensorIP + self._format_spaces + "   -->     * WARNING: dirty or blocked *")
+                        print("   " + self.sensor_ip + self._format_spaces + "   -->     * WARNING: dirty or blocked *")
                     if self.device_status == 1:
                         print(
-                            "   " + self.sensorIP + self._format_spaces + "   -->     * WARNING: approaching end of service life *")
+                            "   " + self.sensor_ip + self._format_spaces + "   -->     * WARNING: approaching end of service life *")
                     if self.fan_status == 1:
-                        print("   " + self.sensorIP + self._format_spaces + "   -->     * WARNING: fan *")
+                        print("   " + self.sensor_ip + self._format_spaces + "   -->     * WARNING: fan *")
                 elif self.system_status == 2:
                     if self.temp_status == 2:
-                        print("   " + self.sensorIP + self._format_spaces + "   -->     *** ERROR: TEMPERATURE ***")
+                        print("   " + self.sensor_ip + self._format_spaces + "   -->     *** ERROR: TEMPERATURE ***")
                     if self.volt_status == 2:
-                        print("   " + self.sensorIP + self._format_spaces + "   -->     *** ERROR: VOLTAGE ***")
+                        print("   " + self.sensor_ip + self._format_spaces + "   -->     *** ERROR: VOLTAGE ***")
                     if self.motor_status == 2:
-                        print("   " + self.sensorIP + self._format_spaces + "   -->     *** ERROR: MOTOR ***")
+                        print("   " + self.sensor_ip + self._format_spaces + "   -->     *** ERROR: MOTOR ***")
                     if self.firmware_status == 1:
                         print(
-                            "   " + self.sensorIP + self._format_spaces + "   -->     *** ERROR: ABNORMAL FIRMWARE ***")
+                            "   " + self.sensor_ip + self._format_spaces + "   -->     *** ERROR: ABNORMAL FIRMWARE ***")
 
     # returns latest status Codes from within the point cloud data packet
     def statusCodes(self):
