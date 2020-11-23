@@ -85,10 +85,9 @@ class DataCaptureThread:
                     if select.select([self.d_socket], [], [], 0)[0]:
                         data_pc, addr = self.d_socket.recvfrom(1500)
 
-                        # version = helper.bytes_to_int(data_pc[0:1])  # Unused
+                        # version = helper.bytes_to_int(data_pc[0:1])  # Unused (?)
                         slot_id = helper.bytes_to_int(data_pc[1:2])
                         lidar_id = helper.bytes_to_int(data_pc[2:3])
-
                         # byte 3 is reserved
 
                         # update lidar status information
@@ -213,7 +212,7 @@ class DataCaptureThread:
                     csv_file.write(
                         f"{coord1},{coord2},{coord3}," +
                         f"{helper.bytes_to_int(point_cloud_data.intensities[i])}," +
-                        "{0:.6f}".format(point_cloud_data.timestamps[i]) +
+                        f"{round(point_cloud_data.timestamps[i], 6)}" +
                         return_nums_end
                     )
 
@@ -254,310 +253,122 @@ class DataCaptureThread:
 
             timestamp_sec = self.start_time
 
-            self.msg.print(
-                "   " + self.sensor_ip + self._format_spaces + "   -->     writing real-time data to ASCII file: " + self.file_path_and_name)
-            csvFile = open(self.file_path_and_name, "w", 1)
+            self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     "
+                           f"writing real-time data to ASCII file: {self.file_path_and_name}")
+            csv_file = open(self.file_path_and_name, "w", 1)
 
-            numPts = 0
-            nullPts = 0
+            num_pts = 0
+            null_pts = 0
 
-            # write header info
-            if self.firmware_type == FirmwareType.SINGLE_RETURN:
-                if self.data_type == DataType.CARTESIAN:  # Cartesian
-                    csvFile.write("//X,Y,Z,Inten-sity,Time\n")
-                elif self.data_type == DataType.SPHERICAL:  # Spherical
-                    csvFile.write("//Distance,Zenith,Azimuth,Inten-sity,Time\n")
-            elif self.firmware_type in [FirmwareType.DOUBLE_RETURN, FirmwareType.TRIPLE_RETURN]:
-                if self.data_type == DataType.CARTESIAN:  # Cartesian
-                    csvFile.write("//X,Y,Z,Inten-sity,Time,ReturnNum\n")
-                elif self.data_type == DataType.SPHERICAL:  # Spherical
-                    csvFile.write("//Distance,Zenith,Azimuth,Inten-sity,Time,ReturnNum\n")
+            # gather and write header info
+            if self.data_type == DataType.CARTESIAN:  # Cartesian
+                header_string = "//X,Y,Z,Intensity,Time"
+            elif self.data_type == DataType.SPHERICAL:  # Spherical
+                header_string = "//Distance,Zenith,Azimuth,Intensity,Time"
+            else:
+                raise ValueError("Unknown datatype.")
+
+            if self.firmware_type in [FirmwareType.DOUBLE_RETURN, FirmwareType.TRIPLE_RETURN]:
+                header_string += ",ReturnNum"
+            csv_file.write(header_string + "\n")
 
             # main loop that captures the desired point cloud data
-            while True:
-                if self.started:
-                    time_since_start = timestamp_sec - self.start_time
+            while self.started:
+                time_since_start = timestamp_sec - self.start_time
+                if time_since_start <= self.duration:
 
-                    if time_since_start <= self.duration:
+                    # read data from receive buffer
+                    if select.select([self.d_socket], [], [], 0)[0]:
+                        data_pc, addr = self.d_socket.recvfrom(1500)
 
-                        # read data from receive buffer
-                        if select.select([self.d_socket], [], [], 0)[0]:
-                            data_pc, addr = self.d_socket.recvfrom(1500)
+                        # update lidar status information
+                        self.updateStatus(data_pc[4:8])
 
-                            # version = int.from_bytes(data_pc[0:1], byteorder='little')
-                            # slot_id = int.from_bytes(data_pc[1:2], byteorder='little')
-                            # lidar_id = int.from_bytes(data_pc[2:3], byteorder='little')
+                        timestamp_type = helper.bytes_to_int(data_pc[8:9])
+                        timestamp_sec = self.getTimestamp(data_pc[10:18], timestamp_type)
 
-                            # byte 3 is reserved
+                        byte_pos = 18
 
-                            # update lidar status information
-                            self.updateStatus(data_pc[4:8])
+                        if self.firmware_type in [FirmwareType.SINGLE_RETURN, FirmwareType.DOUBLE_RETURN]:
+                            timestamp_step = 0.00001
+                        elif self.firmware_type == FirmwareType.TRIPLE_RETURN:
+                            timestamp_step = 0.000016666
+                        else:
+                            raise ValueError("Unknown firmware type.")
 
-                            timestamp_type = int.from_bytes(data_pc[8:9], byteorder='little')
-                            timestamp_sec = self.getTimestamp(data_pc[10:18], timestamp_type)
+                        # to account for first point's timestamp being increment in the loop
+                        timestamp_sec -= timestamp_step
 
-                            bytePos = 18
-
-                            # single return firmware (most common)
+                        for i in range(0, 100):
+                            return_num = None
                             if self.firmware_type == FirmwareType.SINGLE_RETURN:
-                                # to account for first point's timestamp being increment in the loop
-                                timestamp_sec -= 0.00001
+                                timestamp_sec += timestamp_step
+                            else:
+                                mod_firmware_type = i % self.firmware_type
+                                timestamp_sec += float(not mod_firmware_type) * timestamp_step
+                                return_num = mod_firmware_type + 1
+                            timestamp_sec += timestamp_step
 
-                                # Cartesian Coordinate System
-                                if self.data_type == DataType.CARTESIAN:
-                                    for i in range(0, 100):
+                            if self.data_type == DataType.CARTESIAN:
+                                coord2 = struct.unpack('<i', data_pc[byte_pos + 4:byte_pos + 8])[0]  # Y coordinate
+                                if coord2:
+                                    coord1 = struct.unpack('<i', data_pc[byte_pos:byte_pos + 4])[0]  # X coordinate
+                                    byte_pos += 8
+                                    coord3 = struct.unpack('<i', data_pc[byte_pos:byte_pos + 4])[0]  # Z coordinate
+                                    byte_pos += 4
+                                    intensity = helper.bytes_to_int(data_pc[byte_pos:byte_pos + 1])  # intensity
 
-                                        # Y coordinate (check for non-zero)
-                                        coord2 = struct.unpack('<i', data_pc[bytePos + 4:bytePos + 8])[0]
+                                    num_pts += 1
+                                else:
+                                    null_pts += 1
+                                    byte_pos += 13
+                                    continue
+                            elif self.data_type == DataType.SPHERICAL:
+                                coord1 = struct.unpack('<I', data_pc[byte_pos:byte_pos + 4])[0]  # Distance coordinate
+                                if coord1:
+                                    byte_pos += 4
+                                    coord2 = struct.unpack('<H', data_pc[byte_pos:byte_pos + 2])[0]  # Zenith coordinate
+                                    byte_pos += 2
+                                    coord3 = struct.unpack('<H', data_pc[byte_pos:byte_pos + 2])[0]  # Azimuth coordinate
+                                    byte_pos += 2
+                                    intensity = helper.bytes_to_int(data_pc[byte_pos:byte_pos + 1])  # intensity
+                                    byte_pos += 1
 
-                                        # timestamp
-                                        timestamp_sec += 0.00001
+                                    num_pts += 1
+                                else:
+                                    null_pts += 1
+                                    byte_pos += 9
+                                    continue
+                            else:
+                                raise ValueError("Unknown DataType.")
 
-                                        if coord2:
-                                            # X coordinate
-                                            coord1 = struct.unpack('<i', data_pc[bytePos:bytePos + 4])[0]
-                                            bytePos += 8
-                                            # Z coordinate
-                                            coord3 = struct.unpack('<i', data_pc[bytePos:bytePos + 4])[0]
-                                            bytePos += 4
-                                            # intensity
-                                            intensity = int.from_bytes(data_pc[bytePos:bytePos + 1],
-                                                                       byteorder='little')
-                                            bytePos += 1
+                            return_nums_end = "\n"
+                            if self.firmware_type in [FirmwareType.DOUBLE_RETURN, FirmwareType.TRIPLE_RETURN]:
+                                return_nums_end = str(return_num) + return_nums_end
 
-                                            numPts += 1
-                                            csvFile.write(
-                                                "{0:.3f}".format(float(coord1) / 1000.0) + "," + "{0:.3f}".format(
-                                                    float(coord2) / 1000.0) + "," + "{0:.3f}".format(
-                                                    float(coord3) / 1000.0) + "," + str(
-                                                    intensity) + "," + "{0:.6f}".format(timestamp_sec) + "\n")
-                                        else:
-                                            nullPts += 1
-                                            bytePos += 13
-
-                                # Spherical Coordinate System
-                                elif self.data_type == DataType.SPHERICAL:
-                                    for i in range(0, 100):
-
-                                        # Distance coordinate (check for non-zero)
-                                        coord1 = struct.unpack('<I', data_pc[bytePos:bytePos + 4])[0]
-
-                                        # timestamp
-                                        timestamp_sec += 0.00001
-
-                                        if coord1:
-                                            bytePos += 4
-                                            # Zenith coordinate
-                                            coord2 = struct.unpack('<H', data_pc[bytePos:bytePos + 2])[0]
-                                            bytePos += 2
-                                            # Azimuth coordinate
-                                            coord3 = struct.unpack('<H', data_pc[bytePos:bytePos + 2])[0]
-                                            bytePos += 2
-                                            # intensity
-                                            intensity = int.from_bytes(data_pc[bytePos:bytePos + 1],
-                                                                       byteorder='little')
-                                            bytePos += 1
-
-                                            numPts += 1
-                                            csvFile.write(
-                                                "{0:.3f}".format(float(coord1) / 1000.0) + "," + "{0:.2f}".format(
-                                                    float(coord2) / 100.0) + "," + "{0:.2f}".format(
-                                                    float(coord3) / 100.0) + "," + str(
-                                                    intensity) + "," + "{0:.6f}".format(timestamp_sec) + "\n")
-                                        else:
-                                            nullPts += 1
-                                            bytePos += 9
-
-                            # double return firmware
-                            elif self.firmware_type == FirmwareType.DOUBLE_RETURN:
-                                # to account for first point's timestamp being increment in the loop
-                                timestamp_sec -= 0.00001
-
-                                # Cartesian Coordinate System
-                                if self.data_type == DataType.CARTESIAN:
-                                    for i in range(0, 100):
-                                        returnNum = 1
-
-                                        # Y coordinate (check for non-zero)
-                                        coord2 = struct.unpack('<i', data_pc[bytePos + 4:bytePos + 8])[0]
-
-                                        zeroORtwo = i % 2
-
-                                        # timestamp
-                                        timestamp_sec += float(not (zeroORtwo)) * 0.00001
-
-                                        # return number
-                                        returnNum += zeroORtwo * 1
-
-                                        if coord2:
-                                            # X coordinate
-                                            coord1 = struct.unpack('<i', data_pc[bytePos:bytePos + 4])[0]
-                                            bytePos += 8
-                                            # Z coordinate
-                                            coord3 = struct.unpack('<i', data_pc[bytePos:bytePos + 4])[0]
-                                            bytePos += 4
-                                            # intensity
-                                            intensity = int.from_bytes(data_pc[bytePos:bytePos + 1],
-                                                                       byteorder='little')
-                                            bytePos += 1
-
-                                            numPts += 1
-                                            csvFile.write(
-                                                "{0:.3f}".format(float(coord1) / 1000.0) + "," + "{0:.3f}".format(
-                                                    float(coord2) / 1000.0) + "," + "{0:.3f}".format(
-                                                    float(coord3) / 1000.0) + "," + str(
-                                                    intensity) + "," + "{0:.6f}".format(timestamp_sec) + "," + str(
-                                                    returnNum) + "\n")
-                                        else:
-                                            nullPts += 1
-                                            bytePos += 13
-
-                                            # Spherical Coordinate System
-                                elif self.data_type == DataType.SPHERICAL:
-                                    for i in range(0, 100):
-                                        returnNum = 1
-
-                                        # Distance coordinate (check for non-zero)
-                                        coord1 = struct.unpack('<I', data_pc[bytePos:bytePos + 4])[0]
-
-                                        zeroORtwo = i % 2
-
-                                        # timestamp
-                                        timestamp_sec += float(not (zeroORtwo)) * 0.00001
-
-                                        # return number
-                                        returnNum += zeroORtwo * 1
-
-                                        if coord1:
-                                            bytePos += 4
-                                            # Zenith coordinate
-                                            coord2 = struct.unpack('<H', data_pc[bytePos:bytePos + 2])[0]
-                                            bytePos += 2
-                                            # Azimuth coordinate
-                                            coord3 = struct.unpack('<H', data_pc[bytePos:bytePos + 2])[0]
-                                            bytePos += 2
-                                            # intensity
-                                            intensity = int.from_bytes(data_pc[bytePos:bytePos + 1],
-                                                                       byteorder='little')
-                                            bytePos += 1
-
-                                            numPts += 1
-                                            csvFile.write(
-                                                "{0:.3f}".format(float(coord1) / 1000.0) + "," + "{0:.2f}".format(
-                                                    float(coord2) / 100.0) + "," + "{0:.2f}".format(
-                                                    float(coord3) / 100.0) + "," + str(
-                                                    intensity) + "," + "{0:.6f}".format(timestamp_sec) + "," + str(
-                                                    returnNum) + "\n")
-                                        else:
-                                            nullPts += 1
-                                            bytePos += 9
-
-
-                            # triple return firmware
-                            elif self.firmware_type == FirmwareType.TRIPLE_RETURN:
-                                # to account for first point's timestamp being increment in the loop
-                                timestamp_sec -= 0.000016666
-
-                                # Cartesian Coordinate System
-                                if self.data_type == DataType.CARTESIAN:
-                                    for i in range(0, 100):
-                                        returnNum = 1
-
-                                        # Y coordinate (check for non-zero)
-                                        coord2 = struct.unpack('<i', data_pc[bytePos + 4:bytePos + 8])[0]
-
-                                        zeroORoneORtwo = i % 3
-
-                                        # timestamp
-                                        timestamp_sec += float(not (zeroORoneORtwo)) * 0.000016666
-
-                                        # return number
-                                        returnNum += zeroORoneORtwo * 1
-
-                                        if coord2:
-                                            # X coordinate
-                                            coord1 = struct.unpack('<i', data_pc[bytePos:bytePos + 4])[0]
-                                            bytePos += 8
-                                            # Z coordinate
-                                            coord3 = struct.unpack('<i', data_pc[bytePos:bytePos + 4])[0]
-                                            bytePos += 4
-                                            # intensity
-                                            intensity = int.from_bytes(data_pc[bytePos:bytePos + 1],
-                                                                       byteorder='little')
-                                            bytePos += 1
-
-                                            numPts += 1
-                                            csvFile.write(
-                                                "{0:.3f}".format(float(coord1) / 1000.0) + "," + "{0:.3f}".format(
-                                                    float(coord2) / 1000.0) + "," + "{0:.3f}".format(
-                                                    float(coord3) / 1000.0) + "," + str(
-                                                    intensity) + "," + "{0:.6f}".format(timestamp_sec) + "," + str(
-                                                    returnNum) + "\n")
-                                        else:
-                                            nullPts += 1
-                                            bytePos += 13
-
-
-                                # Spherical Coordinate System
-                                elif self.data_type == DataType.SPHERICAL:
-                                    for i in range(0, 100):
-                                        returnNum = 1
-
-                                        # Distance coordinate (check for non-zero)
-                                        coord1 = struct.unpack('<I', data_pc[bytePos:bytePos + 4])[0]
-
-                                        zeroORoneORtwo = i % 3
-
-                                        # timestamp
-                                        timestamp_sec += float(not (zeroORoneORtwo)) * 0.000016666
-
-                                        # return number
-                                        returnNum += zeroORoneORtwo * 1
-
-                                        if coord1:
-                                            bytePos += 4
-                                            # Zenith coordinate
-                                            coord2 = struct.unpack('<H', data_pc[bytePos:bytePos + 2])[0]
-                                            bytePos += 2
-                                            # Azimuth coordinate
-                                            coord3 = struct.unpack('<H', data_pc[bytePos:bytePos + 2])[0]
-                                            bytePos += 2
-                                            # intensity
-                                            intensity = int.from_bytes(data_pc[bytePos:bytePos + 1],
-                                                                       byteorder='little')
-                                            bytePos += 1
-
-                                            numPts += 1
-                                            csvFile.write(
-                                                "{0:.3f}".format(float(coord1) / 1000.0) + "," + "{0:.2f}".format(
-                                                    float(coord2) / 100.0) + "," + "{0:.2f}".format(
-                                                    float(coord3) / 100.0) + "," + str(
-                                                    intensity) + "," + "{0:.6f}".format(timestamp_sec) + "," + str(
-                                                    returnNum) + "\n")
-                                        else:
-                                            nullPts += 1
-                                            bytePos += 9
-
-                    # duration check (exit point)
-                    else:
-                        self.started = False
-                        self.is_capturing = False
-                        break
-                # thread still running check (exit point)
+                            division = 3
+                            if self.data_type == DataType.SPHERICAL:
+                                division = 2
+                            csv_file.write(
+                                f"{round(float(coord1) / 1000.0, 3)},"
+                                f"{round(float(coord2) / pow(10, division), division)},"
+                                f"{round(float(coord3) / pow(10, division), division)},"
+                                f"{intensity},{round(timestamp_sec, 6)},{return_nums_end}"
+                            )
+                # duration check (exit point)
                 else:
+                    self.started = False
+                    self.is_capturing = False
                     break
 
-            self.num_pts = numPts
-            self.null_pts = nullPts
+            self.num_pts = num_pts
+            self.null_pts = null_pts
 
-            self.msg.print(
-                    "   " + self.sensor_ip + self._format_spaces + "   -->     closed ASCII file: " + self.file_path_and_name)
-            self.msg.print("                                (points: " + str(numPts) + " good, " + str(
-                    nullPts) + " null, " + str(numPts + nullPts) + " total)")
-
-            csvFile.close()
-
-        self.msg.print("   " + self.sensor_ip + self._format_spaces + "   -->     Incorrect lidar packet version")
+            self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     "
+                           f"closed ASCII file: {self.file_path_and_name}")
+            self.msg.print(f"{' ' * 32}(points: {num_pts} good, {null_pts} null, {num_pts + null_pts} total)")
+            csv_file.close()
+        self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     Incorrect lidar packet version")
 
     def run_realtime_bin(self):
 
