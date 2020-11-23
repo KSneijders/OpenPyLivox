@@ -4,6 +4,7 @@ import threading
 from pathlib import Path
 
 from openpylivox import helper
+from openpylivox.enums import DataType, FileType, FirmwareType
 from openpylivox.point_cloud_data import PointCloudData
 
 
@@ -17,7 +18,6 @@ class DataCaptureThread:
         self.d_socket = data_socket
         self.i_socket = imu_socket
         self.file_path_and_name = file_path_and_name
-        # fileType 0 = Stored ASCII, 1 = Real-time ASCII, 2 = Real-time BINARY
         self.file_type = file_type
         self.secs_to_wait = secs_to_wait
         self.duration = duration
@@ -51,14 +51,16 @@ class DataCaptureThread:
             # 4 Years of time in seconds
             self.duration = seconds_per_day * (365 * years + amount_of_leap_days)
 
-        if self.file_type == 1:
+        if self.file_type == FileType.StoredASCII:
+            callback = self.run
+        elif self.file_type == FileType.RealtimeASCII:
             callback = self.run_realtime_csv
-        elif self.file_type == 2:
+        elif self.file_type == FileType.RealtimeBINARY:
             callback = self.run_realtime_bin
         else:
-            callback = self.run
-        self.thread = threading.Thread(target=callback, args=())
+            raise ValueError("Unknown filetype.")
 
+        self.thread = threading.Thread(target=callback, args=())
         self.thread.daemon = True
         self.thread.start()
 
@@ -139,9 +141,9 @@ class DataCaptureThread:
 
                         byte_pos = 18
 
-                        if self.firmware_type in [1, 2]:
+                        if self.firmware_type in [FirmwareType.SINGLE_RETURN, FirmwareType.DOUBLE_RETURN]:
                             timestamp_step = 0.00001
-                        elif self.firmware_type == 3:
+                        elif self.firmware_type == FirmwareType.TRIPLE_RETURN:
                             timestamp_step = 0.000016666
                         else:
                             raise ValueError("Unknown firmware type.")
@@ -154,8 +156,7 @@ class DataCaptureThread:
                             coord1 = data_pc[byte_pos:byte_pos + 4]
                             byte_pos += 4
 
-                            # Cartesian Coordinate System
-                            if self.data_type == 0:
+                            if self.data_type == DataType.CARTESIAN:
                                 # Y coordinate
                                 coord2 = data_pc[byte_pos:byte_pos + 4]
                                 byte_pos += 4
@@ -165,7 +166,7 @@ class DataCaptureThread:
                                 # intensity
                                 intensity = data_pc[byte_pos:byte_pos + 1]
                                 byte_pos += 1
-                            elif self.data_type == 1:
+                            elif self.data_type == DataType.SPHERICAL:
                                 # zenith
                                 coord2 = data_pc[byte_pos:byte_pos + 2]
                                 byte_pos += 2
@@ -179,7 +180,7 @@ class DataCaptureThread:
                                 raise ValueError("Unknown datatype.")
 
                             return_num = None
-                            if self.firmware_type == 1:
+                            if self.firmware_type == FirmwareType.SINGLE_RETURN:
                                 timestamp_sec += timestamp_step
                             else:
                                 mod_firmware_type = i % self.firmware_type
@@ -219,22 +220,22 @@ class DataCaptureThread:
                 #  scratcher, lots of different definitions Geospatial/Traditional Photogrammetry/Computer
                 #  Vision/North America/Europe all use different approaches
 
-                if self.data_type == 0:  # Cartesian
+                if self.data_type == DataType.CARTESIAN:  # Cartesian
                     csv_file.write("//X,Y,Z,Intensity,Time\n")
-                elif self.data_type == 1:  # Spherical
+                elif self.data_type == DataType.SPHERICAL:  # Spherical
                     csv_file.write("//Distance,Zenith,Azimuth,Intensity,Time\n")
                 else:
                     raise ValueError("Unknown firmware type.")
 
                 for i in range(len_data):
-                    if self.data_type == 0:
+                    if self.data_type == DataType.CARTESIAN:
                         coord1 = round(float(struct.unpack('<i', point_cloud_data.coord1s[i])[0]) / 1000.0, 3)
                         coord2 = round(float(struct.unpack('<i', point_cloud_data.coord2s[i])[0]) / 1000.0, 3)
                         coord3 = round(float(struct.unpack('<i', point_cloud_data.coord3s[i])[0]) / 1000.0, 3)
 
                         if coord1 or coord2 or coord3:
                             num_pts += 1
-                    elif self.data_type == 1:
+                    elif self.data_type == DataType.SPHERICAL:
                         coord1 = round(float(struct.unpack('<I', point_cloud_data.coord1s[i])[0]) / 1000.0, 3)
                         coord2 = round(float(struct.unpack('<H', point_cloud_data.coord2s[i])[0]) / 100.0, 2)
                         coord3 = round(float(struct.unpack('<H', point_cloud_data.coord3s[i])[0]) / 100.0, 2)
@@ -247,7 +248,7 @@ class DataCaptureThread:
                         raise ValueError("Unknown datatype.")
 
                     return_nums_end = "\n"
-                    if self.firmware_type in [2, 3]:
+                    if self.firmware_type in [FirmwareType.DOUBLE_RETURN, FirmwareType.TRIPLE_RETURN]:
                         return_nums_end = str(point_cloud_data.return_nums[i]) + return_nums_end
 
                     csv_file.write(
@@ -327,11 +328,11 @@ class DataCaptureThread:
 
                 # duration adjustment (trying to get exactly 100,000 points / sec)
                 if self.duration != 126230400:
-                    if self.firmware_type == 1:
+                    if self.firmware_type == FirmwareType.SINGLE_RETURN:
                         self.duration += (0.001 * (self.duration / 2.0))
-                    elif self.firmware_type == 2:
+                    elif self.firmware_type == FirmwareType.DOUBLE_RETURN:
                         self.duration += (0.0005 * (self.duration / 2.0))
-                    elif self.firmware_type == 3:
+                    elif self.firmware_type == FirmwareType.TRIPLE_RETURN:
                         self.duration += (0.00055 * (self.duration / 2.0))
 
                 timestamp_sec = self.start_time
@@ -344,15 +345,15 @@ class DataCaptureThread:
                 nullPts = 0
 
                 # write header info
-                if self.firmware_type == 1:  # single return firmware
-                    if self.data_type == 0:  # Cartesian
+                if self.firmware_type == FirmwareType.SINGLE_RETURN:
+                    if self.data_type == DataType.CARTESIAN:  # Cartesian
                         csvFile.write("//X,Y,Z,Inten-sity,Time\n")
-                    elif self.data_type == 1:  # Spherical
+                    elif self.data_type == DataType.SPHERICAL:  # Spherical
                         csvFile.write("//Distance,Zenith,Azimuth,Inten-sity,Time\n")
-                elif self.firmware_type == 2 or self.firmware_type == 3:  # double or triple return firmware
-                    if self.data_type == 0:  # Cartesian
+                elif self.firmware_type in [FirmwareType.DOUBLE_RETURN, FirmwareType.TRIPLE_RETURN]:
+                    if self.data_type == DataType.CARTESIAN:  # Cartesian
                         csvFile.write("//X,Y,Z,Inten-sity,Time,ReturnNum\n")
-                    elif self.data_type == 1:  # Spherical
+                    elif self.data_type == DataType.SPHERICAL:  # Spherical
                         csvFile.write("//Distance,Zenith,Azimuth,Inten-sity,Time,ReturnNum\n")
 
                 # main loop that captures the desired point cloud data
@@ -381,12 +382,12 @@ class DataCaptureThread:
                                 bytePos = 18
 
                                 # single return firmware (most common)
-                                if self.firmware_type == 1:
+                                if self.firmware_type == FirmwareType.SINGLE_RETURN:
                                     # to account for first point's timestamp being increment in the loop
                                     timestamp_sec -= 0.00001
 
                                     # Cartesian Coordinate System
-                                    if self.data_type == 0:
+                                    if self.data_type == DataType.CARTESIAN:
                                         for i in range(0, 100):
 
                                             # Y coordinate (check for non-zero)
@@ -418,7 +419,7 @@ class DataCaptureThread:
                                                 bytePos += 13
 
                                     # Spherical Coordinate System
-                                    elif self.data_type == 1:
+                                    elif self.data_type == DataType.SPHERICAL:
                                         for i in range(0, 100):
 
                                             # Distance coordinate (check for non-zero)
@@ -451,12 +452,12 @@ class DataCaptureThread:
                                                 bytePos += 9
 
                                 # double return firmware
-                                elif self.firmware_type == 2:
+                                elif self.firmware_type == FirmwareType.DOUBLE_RETURN:
                                     # to account for first point's timestamp being increment in the loop
                                     timestamp_sec -= 0.00001
 
                                     # Cartesian Coordinate System
-                                    if self.data_type == 0:
+                                    if self.data_type == DataType.CARTESIAN:
                                         for i in range(0, 100):
                                             returnNum = 1
 
@@ -495,7 +496,7 @@ class DataCaptureThread:
                                                 bytePos += 13
 
                                                 # Spherical Coordinate System
-                                    elif self.data_type == 1:
+                                    elif self.data_type == DataType.SPHERICAL:
                                         for i in range(0, 100):
                                             returnNum = 1
 
@@ -536,12 +537,12 @@ class DataCaptureThread:
 
 
                                 # triple return firmware
-                                elif self.firmware_type == 3:
+                                elif self.firmware_type == FirmwareType.TRIPLE_RETURN:
                                     # to account for first point's timestamp being increment in the loop
                                     timestamp_sec -= 0.000016666
 
                                     # Cartesian Coordinate System
-                                    if self.data_type == 0:
+                                    if self.data_type == DataType.CARTESIAN:
                                         for i in range(0, 100):
                                             returnNum = 1
 
@@ -581,7 +582,7 @@ class DataCaptureThread:
 
 
                                     # Spherical Coordinate System
-                                    elif self.data_type == 1:
+                                    elif self.data_type == DataType.SPHERICAL:
                                         for i in range(0, 100):
                                             returnNum = 1
 
@@ -748,7 +749,7 @@ class DataCaptureThread:
 
                                 # single return firmware (relevant for Mid-40 and Mid-100)
                                 # Horizon and Tele-15 sensors also fall under this 'if' statement
-                                if self.firmware_type == 1:
+                                if self.firmware_type == FirmwareType.SINGLE_RETURN:
 
                                     # Cartesian Coordinate System
                                     if dataType == 0:
@@ -884,12 +885,12 @@ class DataCaptureThread:
                                             bytePos += 16
 
                                 # double return firmware (Mid-40 and Mid-100 only)
-                                elif self.firmware_type == 2:
+                                elif self.firmware_type == FirmwareType.DOUBLE_RETURN:
                                     # to account for first point's timestamp being increment in the loop
                                     timestamp_sec -= 0.00001
 
                                     # Cartesian Coordinate System
-                                    if self.data_type == 0:
+                                    if self.data_type == DataType.CARTESIAN:
                                         for i in range(0, 100):
                                             returnNum = 1
 
@@ -921,7 +922,7 @@ class DataCaptureThread:
                                             bytePos += 13
 
                                     # Spherical Coordinate System
-                                    elif self.data_type == 1:
+                                    elif self.data_type == DataType.SPHERICAL:
                                         for i in range(0, 100):
                                             returnNum = 1
 
@@ -947,12 +948,12 @@ class DataCaptureThread:
                                             bytePos += 9
 
                                 # triple return firmware (Mid-40 and Mid-100 only)
-                                elif self.firmware_type == 3:
+                                elif self.firmware_type == FirmwareType.TRIPLE_RETURN:
                                     # to account for first point's timestamp being increment in the loop
                                     timestamp_sec -= 0.000016667
 
                                     # Cartesian Coordinate System
-                                    if self.data_type == 0:
+                                    if self.data_type == DataType.CARTESIAN:
                                         for i in range(0, 100):
                                             returnNum = 1
 
@@ -984,7 +985,7 @@ class DataCaptureThread:
                                             bytePos += 13
 
                                     # Spherical Coordinate System
-                                    elif self.data_type == 1:
+                                    elif self.data_type == DataType.SPHERICAL:
                                         for i in range(0, 100):
                                             returnNum = 1
 
