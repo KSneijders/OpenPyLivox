@@ -61,6 +61,15 @@ def bytes_to_int(bytes_int, byteorder='little'):
 ################################################################ """
 
 
+class Msg:
+    def __init__(self, show_message: bool):
+        self.show_message = show_message
+
+    def print(self, val):
+        if self.show_message:
+            print(val)
+
+
 def _parse_resp(show_message, bin_data):
     data_bytes = []
     data_string = ""
