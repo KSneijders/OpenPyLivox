@@ -66,26 +66,26 @@ class DataCaptureThread(object):
         # read point cloud data packet to get packet version and datatype
         # keep looping to 'consume' data that we don't want included in the captured point cloud data
 
+        version = None
         break_by_capture = False
-        while True:
-            if self.started:
-                select_test = select.select([self.d_socket], [], [], 0)
-                if select_test[0]:
-                    data_pc, addr = self.d_socket.recvfrom(1500)
-                    version = int.from_bytes(data_pc[0:1], byteorder='little')
-                    self.data_type = int.from_bytes(data_pc[9:10], byteorder='little')
-                    timestamp_type = int.from_bytes(data_pc[8:9], byteorder='little')
-                    timestamp1 = self.getTimestamp(data_pc[10:18], timestamp_type)
-                    self.updateStatus(data_pc[4:8])
-                    if self.is_capturing:
-                        self.start_time = timestamp1
-                        break_by_capture = True
-                        break
-            else:
-                break
+        while self.started:
+            select_test = select.select([self.d_socket], [], [], 0)
+            if select_test[0]:
+                data_pc, addr = self.d_socket.recvfrom(1500)
+                version = helper.bytes_to_int(data_pc[0:1])
+                self.data_type = helper.bytes_to_int(data_pc[9:10])
+                timestamp_type = helper.bytes_to_int(data_pc[8:9])
+                timestamp1 = self.getTimestamp(data_pc[10:18], timestamp_type)
+                self.updateStatus(data_pc[4:8])
+                if self.is_capturing:
+                    self.start_time = timestamp1
+                    break_by_capture = True
+                    break
+
+        if version is None:
+            raise ValueError("Unable to detect version.")
 
         if break_by_capture:
-
             # check data packet is as expected (first byte anyways)
             if version == 5:
 
@@ -110,7 +110,7 @@ class DataCaptureThread(object):
                             # read data from receive buffer and keep 'consuming' it
                             if select.select([self.d_socket], [], [], 0)[0]:
                                 data_pc, addr = self.d_socket.recvfrom(1500)
-                                timestamp_type = int.from_bytes(data_pc[8:9], byteorder='little')
+                                timestamp_type = helper.bytes_to_int(data_pc[8:9])
                                 timestamp2 = self.getTimestamp(data_pc[10:18], timestamp_type)
                                 self.updateStatus(data_pc[4:8])
                         else:
