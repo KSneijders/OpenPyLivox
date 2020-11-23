@@ -45,7 +45,7 @@ class DataCaptureThread:
         self.time_sync_status = -1
 
         if duration == 0:
-            self.duration = helper.get_amount_seconds_in_year(years=4)
+            self.duration = helper.get_seconds_in_x_years(years=4)
 
         if self.file_type == FileType.StoredASCII:
             callback = self.run
@@ -270,7 +270,7 @@ class DataCaptureThread:
             self.msg.print("   " + self.sensor_ip + self._format_spaces + "   -->     CAPTURING DATA...")
 
             # duration adjustment (trying to get exactly 100,000 points / sec)
-            if self.duration != helper.get_amount_seconds_in_year(years=4):
+            if self.duration != helper.get_seconds_in_x_years(years=4):
                 if self.firmware_type == FirmwareType.SINGLE_RETURN:
                     self.duration += (0.001 * (self.duration / 2.0))
                 elif self.firmware_type == FirmwareType.DOUBLE_RETURN:

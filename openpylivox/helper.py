@@ -56,7 +56,7 @@ def bytes_to_int(bytes_int, byteorder='little'):
     return int.from_bytes(bytes_int, byteorder=byteorder)
 
 
-def get_amount_seconds_in_year(years):
+def get_seconds_in_x_years(years):
     amount_of_leap_days = int(years / 4)
     seconds_per_day = 60 * 60 * 24
     # 4 Years of time in seconds
