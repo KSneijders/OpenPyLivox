@@ -61,26 +61,14 @@ class DataCaptureThread:
         self.thread.start()
 
     def run(self):
-        break_by_capture, version = self.loop_until_capturing(verify=True)
+        version, _ = self.loop_until_capturing(verify=True)
 
         # check data packet is as expected (first byte anyways)
         if version == 5:
             point_cloud_data = PointCloudData()
-            # delayed start to capturing data check (secsToWait parameter)
-            timestamp2 = self.start_time
 
-            while self.started:
-                time_since_start = timestamp2 - self.start_time
-                if time_since_start <= self.secs_to_wait:
-                    # read data from receive buffer and keep 'consuming' it
-                    if select.select([self.d_socket], [], [], 0)[0]:
-                        data_pc, addr = self.d_socket.recvfrom(1500)
-                        timestamp_type = helper.bytes_to_int(data_pc[8:9])
-                        timestamp2 = self.getTimestamp(data_pc[10:18], timestamp_type)
-                        self.updateStatus(data_pc[4:8])
-                else:
-                    self.start_time = timestamp2
-                    break
+            # delayed start to capturing data check (secs_to_wait parameter)
+            self.loop_until_wait_time_is_over(self.start_time)
 
             self.msg.print(f"   {self.sensor_ip}{self._format_spaces * 2}   -->     CAPTURING DATA...")
             self.duration = helper.adjust_duration(self.firmware_type, self.duration)
@@ -247,27 +235,13 @@ class DataCaptureThread:
     def run_realtime_csv(self):
         # read point cloud data packet to get packet version and datatype
         # keep looping to 'consume' data that we don't want included in the captured point cloud data
-        break_by_capture, version = self.loop_until_capturing(verify=True)
+        version, _ = self.loop_until_capturing(verify=True)
 
         # check data packet is as expected (first byte anyways)
         if version == 5:
-
             # delayed start to capturing data check (secsToWait parameter)
-            timestamp2 = self.start_time
-            while self.started:
-                time_since_start = timestamp2 - self.start_time
-                if time_since_start <= self.secs_to_wait:
-                    # read data from receive buffer and keep 'consuming' it
-                    if select.select([self.d_socket], [], [], 0)[0]:
-                        data_pc, addr = self.d_socket.recvfrom(1500)
-                        timestamp_type = helper.bytes_to_int(data_pc[8:9])
-                        timestamp2 = self.getTimestamp(data_pc[10:18], timestamp_type)
-                        self.updateStatus(data_pc[4:8])
-                else:
-                    self.start_time = timestamp2
-                    break
-
-            self.msg.print("   " + self.sensor_ip + self._format_spaces + "   -->     CAPTURING DATA...")
+            self.loop_until_wait_time_is_over(self.start_time)
+            self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     CAPTURING DATA...")
 
             # duration adjustment (trying to get exactly 100,000 points / sec)
             if self.duration != helper.get_seconds_in_x_years(years=4):
@@ -1036,7 +1010,21 @@ class DataCaptureThread:
                 raise ValueError("Unable to detect version.")
             if not break_by_capture:
                 raise ValueError("Unable to start capturing. Not started yet.")
-        return break_by_capture, version
+        return version, break_by_capture
+
+    def loop_until_wait_time_is_over(self, start_time):
+        while self.started:
+            time_since_start = start_time - self.start_time
+            if time_since_start <= self.secs_to_wait:
+                # read data from receive buffer and keep 'consuming' it
+                if select.select([self.d_socket], [], [], 0)[0]:
+                    data_pc, addr = self.d_socket.recvfrom(1500)
+                    timestamp_type = helper.bytes_to_int(data_pc[8:9])
+                    start_time = self.getTimestamp(data_pc[10:18], timestamp_type)
+                    self.updateStatus(data_pc[4:8])
+            else:
+                self.start_time = start_time
+                break
 
     def getTimestamp(self, data_pc, timestamp_type):
 
