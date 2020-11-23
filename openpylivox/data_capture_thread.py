@@ -7,7 +7,7 @@ from openpylivox import helper
 from openpylivox.point_cloud_data import PointCloudData
 
 
-class DataCaptureThread(object):
+class DataCaptureThread:
 
     def __init__(self, sensor_ip, data_socket, imu_socket, file_path_and_name, file_type, secs_to_wait, duration,
                  firmware_type, show_messages, format_spaces, device_type):
@@ -203,114 +203,77 @@ class DataCaptureThread(object):
                     break
 
             # make sure some data was captured
-            lenData = len(point_cloud_data.coord1s)
-            if lenData > 0:
-
-                if self._show_messages: print(
-                    "   " + self.sensor_ip + self._format_spaces + self._format_spaces + "   -->     writing data to ASCII file: " + self.file_path_and_name)
-                csvFile = open(self.file_path_and_name, "w")
-
-                numPts = 0
-                nullPts = 0
-
-                # TODO: apply coordinate transformations to the raw X, Y, Z point cloud data based on the extrinsic parameters
-                # rotation definitions and the sequence they are applied is always a bit of a head scratcher, lots of different definitions
-                # Geospatial/Traditional Photogrammetry/Computer Vision/North America/Europe all use different approaches
-
-                # single return fimware
-                if self.firmware_type == 1:
-
-                    # Cartesian
-                    if self.data_type == 0:
-                        csvFile.write("//X,Y,Z,Inten-sity,Time\n")
-                        for i in range(0, lenData):
-                            coord1 = round(float(struct.unpack('<i', point_cloud_data.coord1s[i])[0]) / 1000.0, 3)
-                            coord2 = round(float(struct.unpack('<i', point_cloud_data.coord2s[i])[0]) / 1000.0, 3)
-                            coord3 = round(float(struct.unpack('<i', point_cloud_data.coord3s[i])[0]) / 1000.0, 3)
-                            if coord1 or coord2 or coord3:
-                                numPts += 1
-                                csvFile.write("{0:.3f}".format(coord1) \
-                                              + "," + "{0:.3f}".format(coord2) \
-                                              + "," + "{0:.3f}".format(coord3) \
-                                              + "," + str(int.from_bytes(point_cloud_data.intensities[i], byteorder='little')) \
-                                              + "," + "{0:.6f}".format(point_cloud_data.timestamps[i]) + "\n")
-                            else:
-                                nullPts += 1
-
-                    # Spherical
-                    elif self.data_type == 1:
-                        csvFile.write("//Distance,Zenith,Azimuth,Inten-sity,Time\n")
-                        for i in range(0, lenData):
-                            coord1 = round(float(struct.unpack('<I', point_cloud_data.coord1s[i])[0]) / 1000.0, 3)
-                            coord2 = round(float(struct.unpack('<H', point_cloud_data.coord2s[i])[0]) / 100.0, 2)
-                            coord3 = round(float(struct.unpack('<H', point_cloud_data.coord3s[i])[0]) / 100.0, 2)
-                            if coord1:
-                                numPts += 1
-                                csvFile.write("{0:.3f}".format(coord1) \
-                                              + "," + "{0:.2f}".format(coord2) \
-                                              + "," + "{0:.2f}".format(coord3) \
-                                              + "," + str(int.from_bytes(point_cloud_data.intensities[i], byteorder='little')) \
-                                              + "," + "{0:.6f}".format(point_cloud_data.timestamps[i]) + "\n")
-                            else:
-                                nullPts += 1
-
-                # multiple returns firmware
-                elif self.firmware_type == 2 or self.firmware_type == 3:
-
-                    # Cartesian
-                    if self.data_type == 0:
-                        csvFile.write("//X,Y,Z,Inten-sity,Time,ReturnNum\n")
-                        for i in range(0, lenData):
-                            coord1 = round(float(struct.unpack('<i', point_cloud_data.coord1s[i])[0]) / 1000.0, 3)
-                            coord2 = round(float(struct.unpack('<i', point_cloud_data.coord2s[i])[0]) / 1000.0, 3)
-                            coord3 = round(float(struct.unpack('<i', point_cloud_data.coord3s[i])[0]) / 1000.0, 3)
-                            if coord1 or coord2 or coord3:
-                                numPts += 1
-                                csvFile.write("{0:.3f}".format(coord1) \
-                                              + "," + "{0:.3f}".format(coord2) \
-                                              + "," + "{0:.3f}".format(coord3) \
-                                              + "," + str(int.from_bytes(point_cloud_data.intensities[i], byteorder='little')) \
-                                              + "," + "{0:.6f}".format(point_cloud_data.timestamps[i]) \
-                                              + "," + str(point_cloud_data.return_nums[i]) + "\n")
-                            else:
-                                nullPts += 1
-
-                    # Spherical
-                    elif self.data_type == 1:
-                        csvFile.write("//Distance,Zenith,Azimuth,Inten-sity,Time,ReturnNum\n")
-                        for i in range(0, lenData):
-                            coord1 = round(float(struct.unpack('<I', point_cloud_data.coord1s[i])[0]) / 1000.0, 3)
-                            coord2 = round(float(struct.unpack('<H', point_cloud_data.coord2s[i])[0]) / 100.0, 2)
-                            coord3 = round(float(struct.unpack('<H', point_cloud_data.coord3s[i])[0]) / 100.0, 2)
-                            if coord1:
-                                numPts += 1
-                                csvFile.write("{0:.3f}".format(coord1) \
-                                              + "," + "{0:.2f}".format(coord2) \
-                                              + "," + "{0:.2f}".format(coord3) \
-                                              + "," + str(int.from_bytes(point_cloud_data.intensities[i], byteorder='little')) \
-                                              + "," + "{0:.6f}".format(point_cloud_data.timestamps[i]) \
-                                              + "," + str(point_cloud_data.return_nums[i]) + "\n")
-                            else:
-                                nullPts += 1
-
-                self.num_pts = numPts
-                self.null_pts = nullPts
+            len_data = len(point_cloud_data.coord1s)
+            if len_data > 0:
 
                 if self._show_messages:
-                    print(
-                        "   " + self.sensor_ip + self._format_spaces + self._format_spaces + "   -->     closed ASCII file: " + self.file_path_and_name)
-                    print(
-                        "                    (points: " + str(numPts) + " good, " + str(nullPts) + " null, " + str(
-                            numPts + nullPts) + " total)")
-                csvFile.close()
+                    print(f"   {self.sensor_ip}{self._format_spaces * 2}   -->     "
+                          f"writing data to ASCII file: {self.file_path_and_name}")
+
+                csv_file = open(self.file_path_and_name, "w")
+                num_pts = 0
+                null_pts = 0
+
+                # TODO: apply coordinate transformations to the raw X, Y, Z point cloud data based on the extrinsic
+                #  parameters rotation definitions and the sequence they are applied is always a bit of a head
+                #  scratcher, lots of different definitions Geospatial/Traditional Photogrammetry/Computer
+                #  Vision/North America/Europe all use different approaches
+
+                if self.data_type == 0:  # Cartesian
+                    csv_file.write("//X,Y,Z,Intensity,Time\n")
+                elif self.data_type == 1:  # Spherical
+                    csv_file.write("//Distance,Zenith,Azimuth,Intensity,Time\n")
+                else:
+                    raise ValueError("Unknown firmware type.")
+
+                for i in range(len_data):
+                    if self.data_type == 0:
+                        coord1 = round(float(struct.unpack('<i', point_cloud_data.coord1s[i])[0]) / 1000.0, 3)
+                        coord2 = round(float(struct.unpack('<i', point_cloud_data.coord2s[i])[0]) / 1000.0, 3)
+                        coord3 = round(float(struct.unpack('<i', point_cloud_data.coord3s[i])[0]) / 1000.0, 3)
+
+                        if coord1 or coord2 or coord3:
+                            num_pts += 1
+                    elif self.data_type == 1:
+                        coord1 = round(float(struct.unpack('<I', point_cloud_data.coord1s[i])[0]) / 1000.0, 3)
+                        coord2 = round(float(struct.unpack('<H', point_cloud_data.coord2s[i])[0]) / 100.0, 2)
+                        coord3 = round(float(struct.unpack('<H', point_cloud_data.coord3s[i])[0]) / 100.0, 2)
+
+                        if coord1:
+                            num_pts += 1
+                        else:
+                            null_pts += 1
+                    else:
+                        raise ValueError("Unknown datatype.")
+
+                    return_nums_end = "\n"
+                    if self.firmware_type in [2, 3]:
+                        return_nums_end = str(point_cloud_data.return_nums[i]) + return_nums_end
+
+                    csv_file.write(
+                        f"{coord1},{coord2},{coord3}," +
+                        f"{helper.bytes_to_int(point_cloud_data.intensities[i])}," +
+                        "{0:.6f}".format(point_cloud_data.timestamps[i]) +
+                        return_nums_end
+                    )
+
+                self.num_pts = num_pts
+                self.null_pts = null_pts
+
+                if self._show_messages:
+                    print(f"   {self.sensor_ip}{self._format_spaces * 2}   -->     "
+                          f"closed ASCII file: {self.file_path_and_name}")
+                    print(f"{' ' * 20}(points: {num_pts} good, {null_pts} null, {num_pts + null_pts} total)")
+                csv_file.close()
 
             else:
-                if self._show_messages: print(
-                    "   " + self.sensor_ip + self._format_spaces + "   -->     WARNING: no point cloud data was captured")
+                if self._show_messages:
+                    print(f"   {self.sensor_ip}{self._format_spaces}   -->     "
+                          f"WARNING: no point cloud data was captured")
 
         else:
-            if self._show_messages: print(
-                "   " + self.sensor_ip + self._format_spaces + "   -->     Incorrect lidar packet version")
+            if self._show_messages:
+                print(f"   {self.sensor_ip}{self._format_spaces}   -->     Incorrect lidar packet version")
 
     def run_realtime_csv(self):
 
