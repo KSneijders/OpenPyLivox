@@ -56,8 +56,15 @@ def bytes_to_int(bytes_int, byteorder='little'):
     return int.from_bytes(bytes_int, byteorder=byteorder)
 
 
+def get_amount_seconds_in_year(years):
+    amount_of_leap_days = int(years / 4)
+    seconds_per_day = 60 * 60 * 24
+    # 4 Years of time in seconds
+    return seconds_per_day * (365 * years + amount_of_leap_days)
+
+
 """ ################################################################
-################################ ??? ###############################
+########################### MSG OBJECT #############################
 ################################################################ """
 
 
@@ -68,6 +75,11 @@ class Msg:
     def print(self, val):
         if self.show_message:
             print(val)
+
+
+""" ################################################################
+################################ ??? ###############################
+################################################################ """
 
 
 def _parse_resp(show_message, bin_data):
