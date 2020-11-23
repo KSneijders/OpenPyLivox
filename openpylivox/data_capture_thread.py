@@ -65,31 +65,7 @@ class DataCaptureThread:
         self.thread.start()
 
     def run(self):
-
-        # read point cloud data packet to get packet version and datatype
-        # keep looping to 'consume' data that we don't want included in the captured point cloud data
-
-        version = None
-        break_by_capture = False
-        while self.started:
-            select_test = select.select([self.d_socket], [], [], 0)
-            if select_test[0]:
-                data_pc, addr = self.d_socket.recvfrom(1500)
-                version = helper.bytes_to_int(data_pc[0:1])
-                self.data_type = helper.bytes_to_int(data_pc[9:10])
-                timestamp_type = helper.bytes_to_int(data_pc[8:9])
-                timestamp1 = self.getTimestamp(data_pc[10:18], timestamp_type)
-                self.updateStatus(data_pc[4:8])
-                if self.is_capturing:
-                    self.start_time = timestamp1
-                    break_by_capture = True
-                    break
-
-        if version is None:
-            raise ValueError("Unable to detect version.")
-
-        if not break_by_capture:
-            return
+        break_by_capture, version = self.loop_until_capturing(verify=True)
 
         # check data packet is as expected (first byte anyways)
         if version == 5:
@@ -280,29 +256,9 @@ class DataCaptureThread:
 
         # read point cloud data packet to get packet version and datatype
         # keep looping to 'consume' data that we don't want included in the captured point cloud data
+        break_by_capture, version = self.loop_until_capturing(verify=True)
 
-        breakByCapture = False
-        while True:
-
-            if self.started:
-                selectTest = select.select([self.d_socket], [], [], 0)
-                if selectTest[0]:
-                    data_pc, addr = self.d_socket.recvfrom(1500)
-                    version = int.from_bytes(data_pc[0:1], byteorder='little')
-                    self.data_type = int.from_bytes(data_pc[9:10], byteorder='little')
-                    timestamp_type = int.from_bytes(data_pc[8:9], byteorder='little')
-                    timestamp1 = self.getTimestamp(data_pc[10:18], timestamp_type)
-                    self.updateStatus(data_pc[4:8])
-                    if self.is_capturing:
-                        self.start_time = timestamp1
-                        breakByCapture = True
-                        break
-            else:
-                break
-
-        if breakByCapture:
-
-            # check data packet is as expected (first byte anyways)
+        # check data packet is as expected (first byte anyways)
             if version == 5:
 
                 # delayed start to capturing data check (secsToWait parameter)
@@ -1072,6 +1028,33 @@ class DataCaptureThread:
             else:
                 if self._show_messages: print(
                     "   " + self.sensor_ip + self._format_spaces + "   -->     Incorrect packet version")
+
+    def loop_until_capturing(self, verify=True):
+        """
+        Read point cloud data packet to get packet version and datatype. Keep looping to 'consume' data that we don't
+        want included in the captured point cloud data.
+        """
+        break_by_capture = False
+        version = None
+        while self.started:
+            select_test = select.select([self.d_socket], [], [], 0)
+            if select_test[0]:
+                data_pc, addr = self.d_socket.recvfrom(1500)
+                version = helper.bytes_to_int(data_pc[0:1])
+                self.data_type = helper.bytes_to_int(data_pc[9:10])
+                timestamp_type = helper.bytes_to_int(data_pc[8:9])
+                timestamp1 = self.getTimestamp(data_pc[10:18], timestamp_type)
+                self.updateStatus(data_pc[4:8])
+                if self.is_capturing:
+                    self.start_time = timestamp1
+                    break_by_capture = True
+                    break
+        if verify:
+            if version is None:
+                raise ValueError("Unable to detect version.")
+            if not break_by_capture:
+                raise ValueError("Unable to start capturing. Not started yet.")
+        return break_by_capture, version
 
     def getTimestamp(self, data_pc, timestamp_type):
 
