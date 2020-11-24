@@ -94,10 +94,10 @@ class DataCaptureThread:
                     # byte 3 is reserved
 
                     # update lidar status information
-                    self.updateStatus(data_pc[4:8])
+                    self.update_status(data_pc[4:8])
 
                     timestamp_type = helper.bytes_to_int(data_pc[8:9])
-                    timestamp_sec = self.getTimestamp(data_pc[10:18], timestamp_type)
+                    timestamp_sec = helper.get_timestamp(data_pc[10:18], timestamp_type)
 
                     byte_pos = 18
 
@@ -285,10 +285,10 @@ class DataCaptureThread:
                     data_pc, addr = self.d_socket.recvfrom(1500)
 
                     # update lidar status information
-                    self.updateStatus(data_pc[4:8])
+                    self.update_status(data_pc[4:8])
 
                     timestamp_type = helper.bytes_to_int(data_pc[8:9])
-                    timestamp_sec = self.getTimestamp(data_pc[10:18], timestamp_type)
+                    timestamp_sec = helper.get_timestamp(data_pc[10:18], timestamp_type)
 
                     byte_pos = 18
 
@@ -419,10 +419,10 @@ class DataCaptureThread:
                     data_pc, addr = self.d_socket.recvfrom(1500)
 
                     # update lidar status information
-                    self.updateStatus(data_pc[4:8])
+                    self.update_status(data_pc[4:8])
                     data_type = int.from_bytes(data_pc[9:10], byteorder='little')
                     timestamp_type = int.from_bytes(data_pc[8:9], byteorder='little')
-                    timestamp_sec = self.getTimestamp(data_pc[10:18], timestamp_type)
+                    timestamp_sec = helper.get_timestamp(data_pc[10:18], timestamp_type)
 
                     byte_pos = 18
 
@@ -491,7 +491,7 @@ class DataCaptureThread:
 
                     data_type = helper.bytes_to_int(imu_data[9:10])
                     timestamp_type = helper.bytes_to_int(imu_data[8:9])
-                    timestamp_sec = self.getTimestamp(imu_data[10:18], timestamp_type)
+                    timestamp_sec = helper.get_timestamp(imu_data[10:18], timestamp_type)
 
                     byte_pos = 18
 
@@ -542,8 +542,8 @@ class DataCaptureThread:
                 version = helper.bytes_to_int(data_pc[0:1])
                 self.data_type = helper.bytes_to_int(data_pc[9:10])
                 timestamp_type = helper.bytes_to_int(data_pc[8:9])
-                timestamp1 = self.getTimestamp(data_pc[10:18], timestamp_type)
-                self.updateStatus(data_pc[4:8])
+                timestamp1 = helper.get_timestamp(data_pc[10:18], timestamp_type)
+                self.update_status(data_pc[4:8])
                 if self.is_capturing:
                     self.start_time = timestamp1
                     break_by_capture = True
@@ -563,8 +563,8 @@ class DataCaptureThread:
                 if select.select([self.d_socket], [], [], 0)[0]:
                     data_pc, addr = self.d_socket.recvfrom(1500)
                     timestamp_type = helper.bytes_to_int(data_pc[8:9])
-                    start_time = self.getTimestamp(data_pc[10:18], timestamp_type)
-                    self.updateStatus(data_pc[4:8])
+                    start_time = helper.get_timestamp(data_pc[10:18], timestamp_type)
+                    self.update_status(data_pc[4:8])
                 if check_i_socket:
                     if select.select([self.i_socket], [], [], 0)[0]:
                         imu_data, addr2 = self.i_socket.recvfrom(50)
@@ -572,33 +572,13 @@ class DataCaptureThread:
                 self.start_time = start_time
                 break
 
-    def getTimestamp(self, data_pc, timestamp_type):
-
-        # nanosecond timestamp
-        if timestamp_type == 0 or timestamp_type == 1 or timestamp_type == 4:
-            timestamp_sec = round(float(struct.unpack('<Q', data_pc[0:8])[0]) / 1000000000.0, 6)  # convert to seconds
-
-        # UTC timestamp, microseconds past the hour
-        elif timestamp_type == 3:
-            timestamp_year = int.from_bytes(data_pc[0:1], byteorder='little')
-            timestamp_month = int.from_bytes(data_pc[1:2], byteorder='little')
-            timestamp_day = int.from_bytes(data_pc[2:3], byteorder='little')
-            timestamp_hour = int.from_bytes(data_pc[3:4], byteorder='little')
-            timestamp_sec = round(float(struct.unpack('<L', data_pc[4:8])[0]) / 1000000.0, 6)  # convert to seconds
-
-            timestamp_sec += timestamp_hour * 3600.  # seconds into the day
-
-            # TODO: check and adjust for hour, day, month and year crossovers
-
-        return timestamp_sec
-
     # parse lidar status codes and update object properties, can provide real-time warning/error message display
-    def updateStatus(self, data_pc):
+    def update_status(self, data_pc):
 
-        status_bits = str(bin(int.from_bytes(data_pc[0:1], byteorder='little')))[2:].zfill(8)
-        status_bits += str(bin(int.from_bytes(data_pc[1:2], byteorder='little')))[2:].zfill(8)
-        status_bits += str(bin(int.from_bytes(data_pc[2:3], byteorder='little')))[2:].zfill(8)
-        status_bits += str(bin(int.from_bytes(data_pc[3:4], byteorder='little')))[2:].zfill(8)
+        status_bits = str(bin(helper.bytes_to_int(data_pc[0:1])))[2:].zfill(8)
+        status_bits += str(bin(helper.bytes_to_int(data_pc[1:2])))[2:].zfill(8)
+        status_bits += str(bin(helper.bytes_to_int(data_pc[2:3])))[2:].zfill(8)
+        status_bits += str(bin(helper.bytes_to_int(data_pc[3:4])))[2:].zfill(8)
 
         self.temp_status = int(status_bits[0:2], 2)
         self.volt_status = int(status_bits[2:4], 2)
@@ -617,30 +597,26 @@ class DataCaptureThread:
         if self.system_status:
             if self.system_status == 1:
                 if self.temp_status == 1:
-                    self.msg.print("   " + self.sensor_ip + self._format_spaces + "   -->     * WARNING: temperature *")
+                    self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     * WARNING: temperature *")
                 if self.volt_status == 1:
-                    self.msg.print("   " + self.sensor_ip + self._format_spaces + "   -->     * WARNING: voltage *")
+                    self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     * WARNING: voltage *")
                 if self.motor_status == 1:
-                    self.msg.print("   " + self.sensor_ip + self._format_spaces + "   -->     * WARNING: motor *")
+                    self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     * WARNING: motor *")
                 if self.dirty_status == 1:
-                    self.msg.print(
-                        "   " + self.sensor_ip + self._format_spaces + "   -->     * WARNING: dirty or blocked *")
+                    self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     * WARNING: dirty or blocked *")
                 if self.device_status == 1:
-                    self.msg.print(
-                        "   " + self.sensor_ip + self._format_spaces + "   -->     * WARNING: approaching end of service life *")
+                    self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     * WARNING: approaching end of service life *")
                 if self.fan_status == 1:
-                    self.msg.print("   " + self.sensor_ip + self._format_spaces + "   -->     * WARNING: fan *")
+                    self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     * WARNING: fan *")
             elif self.system_status == 2:
                 if self.temp_status == 2:
-                    self.msg.print(
-                        "   " + self.sensor_ip + self._format_spaces + "   -->     *** ERROR: TEMPERATURE ***")
+                    self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     *** ERROR: TEMPERATURE ***")
                 if self.volt_status == 2:
-                    self.msg.print("   " + self.sensor_ip + self._format_spaces + "   -->     *** ERROR: VOLTAGE ***")
+                    self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     *** ERROR: VOLTAGE ***")
                 if self.motor_status == 2:
-                    self.msg.print("   " + self.sensor_ip + self._format_spaces + "   -->     *** ERROR: MOTOR ***")
+                    self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     *** ERROR: MOTOR ***")
                 if self.firmware_status == 1:
-                    self.msg.print(
-                        "   " + self.sensor_ip + self._format_spaces + "   -->     *** ERROR: ABNORMAL FIRMWARE ***")
+                    self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     *** ERROR: ABNORMAL FIRMWARE ***")
 
     # returns latest status Codes from within the point cloud data packet
     def statusCodes(self):

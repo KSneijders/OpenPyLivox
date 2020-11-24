@@ -1,4 +1,5 @@
 import binascii
+import struct
 
 import crcmod
 
@@ -171,3 +172,24 @@ def adjust_duration(firmware_type, duration):
             raise ValueError(f"Unknown firmware type: {firmware_type}")
         return duration + (firmware_adjustments.get(firmware_type) * (duration / 2.0))
     return duration
+
+
+def get_timestamp(data_pc, timestamp_type):
+    # nanosecond timestamp
+    if timestamp_type in [0, 1, 4]:
+        timestamp_sec = round(float(struct.unpack('<Q', data_pc[0:8])[0]) / 1000000000.0, 6)  # convert to seconds
+    # UTC timestamp, microseconds past the hour
+    elif timestamp_type == 3:
+        timestamp_year = bytes_to_int(data_pc[0:1])
+        timestamp_month = bytes_to_int(data_pc[1:2])
+        timestamp_day = bytes_to_int(data_pc[2:3])
+        timestamp_hour = bytes_to_int(data_pc[3:4])
+        timestamp_sec = round(float(struct.unpack('<L', data_pc[4:8])[0]) / 1000000.0, 6)  # convert to seconds
+
+        timestamp_sec += timestamp_hour * 3600.  # seconds into the day
+    else:
+        raise ValueError(f"Unknown timestamp type {timestamp_type}")
+
+        # TODO: check and adjust for hour, day, month and year crossovers
+
+    return timestamp_sec
