@@ -70,12 +70,28 @@ def get_seconds_in_x_years(years):
 
 
 class Msg:
-    def __init__(self, show_message: bool):
+    def __init__(self, show_message: bool, sensor_ip=None, format_spaces=None, default_arrow=None):
         self.show_message = show_message
+        self.sensor_ip = sensor_ip
+        self.format_spaces = format_spaces
+        self.default_arrow = default_arrow
 
     def print(self, val):
         if self.show_message:
             print(val)
+
+    def prefix_print(self, string, f_spaces=1, arrow=None):
+        if not (self.sensor_ip and self.format_spaces):
+            raise ValueError("Prefix print hasn't been initialised yet. Do so in the __init__.")
+        if arrow is None and self.default_arrow is None:
+            raise ValueError("Prefix default_arrow hasn't been defined.")
+        elif arrow is None:
+            arrow = self.default_arrow
+
+        self.print(f"   {self.sensor_ip}{self.format_spaces * f_spaces}   {arrow}     {string}")
+
+    def space_print(self, spaces, string):
+        self.print(f"{' ' * spaces}{string}")
 
 
 """ ################################################################

@@ -28,7 +28,12 @@ class DataCaptureThread:
         self.num_pts = 0
         self.null_pts = 0
         self.imu_records = 0
-        self.msg = helper.Msg(show_message=show_messages)
+        self.msg = helper.Msg(
+            show_message=show_messages,
+            sensor_ip=sensor_ip,
+            format_spaces=format_spaces,
+            default_arrow="-->"
+        )
         self._format_spaces = format_spaces
         self._device_type = device_type
         self.system_status = -1
@@ -65,7 +70,7 @@ class DataCaptureThread:
 
         # check data packet is as expected (first byte anyways)
         if version != 5:
-            self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     Incorrect lidar packet version")
+            self.msg.prefix_print("Incorrect lidar packet version")
             return
 
         point_cloud_data = PointCloudData()
@@ -73,7 +78,7 @@ class DataCaptureThread:
         # delayed start to capturing data check (secs_to_wait parameter)
         self.loop_until_wait_time_is_over(self.start_time)
 
-        self.msg.print(f"   {self.sensor_ip}{self._format_spaces * 2}   -->     CAPTURING DATA...")
+        self.msg.prefix_print("CAPTURING DATA...", f_spaces=2)
         self.duration = helper.adjust_duration(self.firmware_type, self.duration)
 
         timestamp_sec = self.start_time
@@ -166,11 +171,7 @@ class DataCaptureThread:
         # make sure some data was captured
         len_data = len(point_cloud_data.coord1s)
         if len_data > 0:
-
-            self.msg.print(
-                f"   {self.sensor_ip}{self._format_spaces * 2}   -->     "
-                f"writing data to ASCII file: {self.file_path_and_name}"
-            )
+            self.msg.prefix_print(f"writing data to ASCII file: {self.file_path_and_name}", f_spaces=2)
 
             csv_file = open(self.file_path_and_name, "w")
             num_pts = 0
@@ -222,14 +223,11 @@ class DataCaptureThread:
             self.num_pts = num_pts
             self.null_pts = null_pts
 
-            self.msg.print(f"   {self.sensor_ip}{self._format_spaces * 2}   -->     "
-                           f"closed ASCII file: {self.file_path_and_name}")
-            self.msg.print(f"{' ' * 20}(points: {num_pts} good, {null_pts} null, {num_pts + null_pts} total)")
+            self.msg.prefix_print(f"closed ASCII file: {self.file_path_and_name}", f_spaces=2)
+            self.msg.space_print(20, f"(points: {num_pts} good, {null_pts} null, {num_pts + null_pts} total)")
             csv_file.close()
-
         else:
-            self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     "
-                           f"WARNING: no point cloud data was captured")
+            self.msg.prefix_print("WARNING: no point cloud data was captured")
 
     def run_realtime_csv(self):
         # read point cloud data packet to get packet version and datatype
@@ -238,12 +236,12 @@ class DataCaptureThread:
 
         # check data packet is as expected (first byte anyways)
         if version != 5:
-            self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     Incorrect lidar packet version")
+            self.msg.prefix_print("Incorrect lidar packet version")
             return
 
         # delayed start to capturing data check (secsToWait parameter)
         self.loop_until_wait_time_is_over(self.start_time)
-        self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     CAPTURING DATA...")
+        self.msg.prefix_print("CAPTURING DATA...")
 
         # duration adjustment (trying to get exactly 100,000 points / sec)
         if self.duration != helper.get_seconds_in_x_years(years=4):
@@ -256,8 +254,7 @@ class DataCaptureThread:
 
         timestamp_sec = self.start_time
 
-        self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     "
-                       f"writing real-time data to ASCII file: {self.file_path_and_name}")
+        self.msg.prefix_print(f"writing real-time data to ASCII file: {self.file_path_and_name}")
         csv_file = open(self.file_path_and_name, "w", 1)
 
         num_pts = 0
@@ -367,9 +364,8 @@ class DataCaptureThread:
         self.num_pts = num_pts
         self.null_pts = null_pts
 
-        self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     "
-                       f"closed ASCII file: {self.file_path_and_name}")
-        self.msg.print(f"{' ' * 32}(points: {num_pts} good, {null_pts} null, {num_pts + null_pts} total)")
+        self.msg.prefix_print(f"closed ASCII file: {self.file_path_and_name}")
+        self.msg.space_print(32, f"(points: {num_pts} good, {null_pts} null, {num_pts + null_pts} total)")
         csv_file.close()
 
     def run_realtime_bin(self):
@@ -384,18 +380,15 @@ class DataCaptureThread:
 
         # check data packet is as expected (first byte anyways)
         if version != 5:
-            self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     Incorrect lidar packet version")
+            self.msg.prefix_print("Incorrect lidar packet version")
             return
 
         self.loop_until_wait_time_is_over(self.start_time, check_i_socket=True)
-        self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     CAPTURING DATA...")
+        self.msg.prefix_print("CAPTURING DATA...")
 
         timestamp_sec = self.start_time
 
-        self.msg.print(
-            f"   {self.sensor_ip}{self._format_spaces}   -->     "
-            f"writing real-time data to BINARY file: {self.file_path_and_name}"
-        )
+        self.msg.prefix_print(f"writing real-time data to BINARY file: {self.file_path_and_name}")
         bin_file = open(self.file_path_and_name, "wb")
         imu_file = None
         imu_reporting = False
@@ -517,11 +510,10 @@ class DataCaptureThread:
         self.null_pts = null_pts
         self.imu_records = imu_records
 
-        self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     "
-                       f"closed BINARY file: {self.file_path_and_name}")
-        self.msg.print(f"{' ' * 32}(points: {num_pts} good, {null_pts} null, {num_pts + null_pts} total)")
+        self.msg.prefix_print(f"closed BINARY file: {self.file_path_and_name}")
+        self.msg.space_print(32, f"(points: {num_pts} good, {null_pts} null, {num_pts + null_pts} total)")
         if self._device_type == "Horizon" or self._device_type == "Tele-15":
-            self.msg.print(f"{' ' * 32}(IMU records: {imu_records})")
+            self.msg.space_print(32, f"(IMU records: {imu_records})")
 
         bin_file.close()
 
@@ -597,26 +589,26 @@ class DataCaptureThread:
         if self.system_status:
             if self.system_status == 1:
                 if self.temp_status == 1:
-                    self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     * WARNING: temperature *")
+                    self.msg.prefix_print("* WARNING: temperature *")
                 if self.volt_status == 1:
-                    self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     * WARNING: voltage *")
+                    self.msg.prefix_print("* WARNING: voltage *")
                 if self.motor_status == 1:
-                    self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     * WARNING: motor *")
+                    self.msg.prefix_print("* WARNING: motor *")
                 if self.dirty_status == 1:
-                    self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     * WARNING: dirty or blocked *")
+                    self.msg.prefix_print("* WARNING: dirty or blocked *")
                 if self.device_status == 1:
-                    self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     * WARNING: approaching end of service life *")
+                    self.msg.prefix_print("* WARNING: approaching end of service life *")
                 if self.fan_status == 1:
-                    self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     * WARNING: fan *")
+                    self.msg.prefix_print("* WARNING: fan *")
             elif self.system_status == 2:
                 if self.temp_status == 2:
-                    self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     *** ERROR: TEMPERATURE ***")
+                    self.msg.prefix_print("*** ERROR: TEMPERATURE ***")
                 if self.volt_status == 2:
-                    self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     *** ERROR: VOLTAGE ***")
+                    self.msg.prefix_print("*** ERROR: VOLTAGE ***")
                 if self.motor_status == 2:
-                    self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     *** ERROR: MOTOR ***")
+                    self.msg.prefix_print("*** ERROR: MOTOR ***")
                 if self.firmware_status == 1:
-                    self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     *** ERROR: ABNORMAL FIRMWARE ***")
+                    self.msg.prefix_print("*** ERROR: ABNORMAL FIRMWARE ***")
 
     # returns latest status Codes from within the point cloud data packet
     def status_codes(self):
