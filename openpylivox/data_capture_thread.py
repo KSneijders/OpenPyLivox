@@ -64,172 +64,172 @@ class DataCaptureThread:
         version, _ = self.loop_until_capturing(verify=True)
 
         # check data packet is as expected (first byte anyways)
-        if version == 5:
-            point_cloud_data = PointCloudData()
+        if version != 5:
+            self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     Incorrect lidar packet version")
+            return
 
-            # delayed start to capturing data check (secs_to_wait parameter)
-            self.loop_until_wait_time_is_over(self.start_time)
+        point_cloud_data = PointCloudData()
 
-            self.msg.print(f"   {self.sensor_ip}{self._format_spaces * 2}   -->     CAPTURING DATA...")
-            self.duration = helper.adjust_duration(self.firmware_type, self.duration)
+        # delayed start to capturing data check (secs_to_wait parameter)
+        self.loop_until_wait_time_is_over(self.start_time)
 
-            timestamp_sec = self.start_time
+        self.msg.print(f"   {self.sensor_ip}{self._format_spaces * 2}   -->     CAPTURING DATA...")
+        self.duration = helper.adjust_duration(self.firmware_type, self.duration)
 
-            # main loop that captures the desired point cloud data
-            while self.started:
-                time_since_start = timestamp_sec - self.start_time
+        timestamp_sec = self.start_time
 
-                if time_since_start <= self.duration:
+        # main loop that captures the desired point cloud data
+        while self.started:
+            time_since_start = timestamp_sec - self.start_time
 
-                    # read data from receive buffer
-                    if select.select([self.d_socket], [], [], 0)[0]:
-                        data_pc, addr = self.d_socket.recvfrom(1500)
+            if time_since_start <= self.duration:
 
-                        # version = helper.bytes_to_int(data_pc[0:1])  # Unused (?)
-                        slot_id = helper.bytes_to_int(data_pc[1:2])
-                        lidar_id = helper.bytes_to_int(data_pc[2:3])
-                        # byte 3 is reserved
+                # read data from receive buffer
+                if select.select([self.d_socket], [], [], 0)[0]:
+                    data_pc, addr = self.d_socket.recvfrom(1500)
 
-                        # update lidar status information
-                        self.updateStatus(data_pc[4:8])
+                    # version = helper.bytes_to_int(data_pc[0:1])  # Unused (?)
+                    slot_id = helper.bytes_to_int(data_pc[1:2])
+                    lidar_id = helper.bytes_to_int(data_pc[2:3])
+                    # byte 3 is reserved
 
-                        timestamp_type = helper.bytes_to_int(data_pc[8:9])
-                        timestamp_sec = self.getTimestamp(data_pc[10:18], timestamp_type)
+                    # update lidar status information
+                    self.updateStatus(data_pc[4:8])
 
-                        byte_pos = 18
+                    timestamp_type = helper.bytes_to_int(data_pc[8:9])
+                    timestamp_sec = self.getTimestamp(data_pc[10:18], timestamp_type)
 
-                        if self.firmware_type in [FirmwareType.SINGLE_RETURN, FirmwareType.DOUBLE_RETURN]:
-                            timestamp_step = 0.00001
-                        elif self.firmware_type == FirmwareType.TRIPLE_RETURN:
-                            timestamp_step = 0.000016666
-                        else:
-                            raise ValueError("Unknown firmware type.")
+                    byte_pos = 18
 
-                        # to account for first point's timestamp being increment in the loop
-                        timestamp_sec -= timestamp_step
+                    if self.firmware_type in [FirmwareType.SINGLE_RETURN, FirmwareType.DOUBLE_RETURN]:
+                        timestamp_step = 0.00001
+                    elif self.firmware_type == FirmwareType.TRIPLE_RETURN:
+                        timestamp_step = 0.000016666
+                    else:
+                        raise ValueError("Unknown firmware type.")
 
-                        for i in range(0, 100):
-                            # X coordinate / distance
-                            coord1 = data_pc[byte_pos:byte_pos + 4]
+                    # to account for first point's timestamp being increment in the loop
+                    timestamp_sec -= timestamp_step
+
+                    for i in range(0, 100):
+                        # X coordinate / distance
+                        coord1 = data_pc[byte_pos:byte_pos + 4]
+                        byte_pos += 4
+
+                        if self.data_type == DataType.CARTESIAN:
+                            # Y coordinate
+                            coord2 = data_pc[byte_pos:byte_pos + 4]
                             byte_pos += 4
+                            # Z coordinate
+                            coord3 = data_pc[byte_pos:byte_pos + 4]
+                            byte_pos += 4
+                            # intensity
+                            intensity = data_pc[byte_pos:byte_pos + 1]
+                            byte_pos += 1
+                        elif self.data_type == DataType.SPHERICAL:
+                            # zenith
+                            coord2 = data_pc[byte_pos:byte_pos + 2]
+                            byte_pos += 2
+                            # azimuth
+                            coord3 = data_pc[byte_pos:byte_pos + 2]
+                            byte_pos += 2
+                            # intensity
+                            intensity = data_pc[byte_pos:byte_pos + 1]
+                            byte_pos += 1
+                        else:
+                            raise ValueError("Unknown datatype.")
 
-                            if self.data_type == DataType.CARTESIAN:
-                                # Y coordinate
-                                coord2 = data_pc[byte_pos:byte_pos + 4]
-                                byte_pos += 4
-                                # Z coordinate
-                                coord3 = data_pc[byte_pos:byte_pos + 4]
-                                byte_pos += 4
-                                # intensity
-                                intensity = data_pc[byte_pos:byte_pos + 1]
-                                byte_pos += 1
-                            elif self.data_type == DataType.SPHERICAL:
-                                # zenith
-                                coord2 = data_pc[byte_pos:byte_pos + 2]
-                                byte_pos += 2
-                                # azimuth
-                                coord3 = data_pc[byte_pos:byte_pos + 2]
-                                byte_pos += 2
-                                # intensity
-                                intensity = data_pc[byte_pos:byte_pos + 1]
-                                byte_pos += 1
-                            else:
-                                raise ValueError("Unknown datatype.")
+                        return_num = None
+                        if self.firmware_type == FirmwareType.SINGLE_RETURN:
+                            timestamp_sec += timestamp_step
+                        else:
+                            mod_firmware_type = i % self.firmware_type
+                            timestamp_sec += float(not mod_firmware_type) * timestamp_step
+                            return_num = mod_firmware_type + 1
 
-                            return_num = None
-                            if self.firmware_type == FirmwareType.SINGLE_RETURN:
-                                timestamp_sec += timestamp_step
-                            else:
-                                mod_firmware_type = i % self.firmware_type
-                                timestamp_sec += float(not mod_firmware_type) * timestamp_step
-                                return_num = mod_firmware_type + 1
+                        point_cloud_data.add_entry(
+                            timestamp=timestamp_sec,
+                            timestamp_type=timestamp_type,
+                            slot_id=slot_id,
+                            lidar_id=lidar_id,
+                            coord1=coord1,
+                            coord2=coord2,
+                            coord3=coord3,
+                            intensity=intensity,
+                            return_num=return_num
+                        )
+            else:
+                self.started = False
+                self.is_capturing = False
+                break
 
-                            point_cloud_data.add_entry(
-                                timestamp=timestamp_sec,
-                                timestamp_type=timestamp_type,
-                                slot_id=slot_id,
-                                lidar_id=lidar_id,
-                                coord1=coord1,
-                                coord2=coord2,
-                                coord3=coord3,
-                                intensity=intensity,
-                                return_num=return_num
-                            )
+        # make sure some data was captured
+        len_data = len(point_cloud_data.coord1s)
+        if len_data > 0:
+
+            self.msg.print(
+                f"   {self.sensor_ip}{self._format_spaces * 2}   -->     "
+                f"writing data to ASCII file: {self.file_path_and_name}"
+            )
+
+            csv_file = open(self.file_path_and_name, "w")
+            num_pts = 0
+            null_pts = 0
+
+            # TODO: apply coordinate transformations to the raw X, Y, Z point cloud data based on the extrinsic
+            #  parameters rotation definitions and the sequence they are applied is always a bit of a head
+            #  scratcher, lots of different definitions Geospatial/Traditional Photogrammetry/Computer
+            #  Vision/North America/Europe all use different approaches
+
+            if self.data_type == DataType.CARTESIAN:  # Cartesian
+                csv_file.write("//X,Y,Z,Intensity,Time\n")
+            elif self.data_type == DataType.SPHERICAL:  # Spherical
+                csv_file.write("//Distance,Zenith,Azimuth,Intensity,Time\n")
+            else:
+                raise ValueError("Unknown firmware type.")
+
+            for i in range(len_data):
+                if self.data_type == DataType.CARTESIAN:
+                    coord1 = round(float(struct.unpack('<i', point_cloud_data.coord1s[i])[0]) / 1000.0, 3)
+                    coord2 = round(float(struct.unpack('<i', point_cloud_data.coord2s[i])[0]) / 1000.0, 3)
+                    coord3 = round(float(struct.unpack('<i', point_cloud_data.coord3s[i])[0]) / 1000.0, 3)
+
+                    if coord1 or coord2 or coord3:
+                        num_pts += 1
+                elif self.data_type == DataType.SPHERICAL:
+                    coord1 = round(float(struct.unpack('<I', point_cloud_data.coord1s[i])[0]) / 1000.0, 3)
+                    coord2 = round(float(struct.unpack('<H', point_cloud_data.coord2s[i])[0]) / 100.0, 2)
+                    coord3 = round(float(struct.unpack('<H', point_cloud_data.coord3s[i])[0]) / 100.0, 2)
+
+                    if coord1:
+                        num_pts += 1
+                    else:
+                        null_pts += 1
                 else:
-                    self.started = False
-                    self.is_capturing = False
-                    break
+                    raise ValueError("Unknown datatype.")
 
-            # make sure some data was captured
-            len_data = len(point_cloud_data.coord1s)
-            if len_data > 0:
+                return_nums_end = "\n"
+                if self.firmware_type in [FirmwareType.DOUBLE_RETURN, FirmwareType.TRIPLE_RETURN]:
+                    return_nums_end = str(point_cloud_data.return_nums[i]) + return_nums_end
 
-                self.msg.print(
-                    f"   {self.sensor_ip}{self._format_spaces * 2}   -->     "
-                    f"writing data to ASCII file: {self.file_path_and_name}"
+                csv_file.write(
+                    f"{coord1},{coord2},{coord3}," +
+                    f"{helper.bytes_to_int(point_cloud_data.intensities[i])}," +
+                    f"{round(point_cloud_data.timestamps[i], 6)}" +
+                    return_nums_end
                 )
 
-                csv_file = open(self.file_path_and_name, "w")
-                num_pts = 0
-                null_pts = 0
+            self.num_pts = num_pts
+            self.null_pts = null_pts
 
-                # TODO: apply coordinate transformations to the raw X, Y, Z point cloud data based on the extrinsic
-                #  parameters rotation definitions and the sequence they are applied is always a bit of a head
-                #  scratcher, lots of different definitions Geospatial/Traditional Photogrammetry/Computer
-                #  Vision/North America/Europe all use different approaches
-
-                if self.data_type == DataType.CARTESIAN:  # Cartesian
-                    csv_file.write("//X,Y,Z,Intensity,Time\n")
-                elif self.data_type == DataType.SPHERICAL:  # Spherical
-                    csv_file.write("//Distance,Zenith,Azimuth,Intensity,Time\n")
-                else:
-                    raise ValueError("Unknown firmware type.")
-
-                for i in range(len_data):
-                    if self.data_type == DataType.CARTESIAN:
-                        coord1 = round(float(struct.unpack('<i', point_cloud_data.coord1s[i])[0]) / 1000.0, 3)
-                        coord2 = round(float(struct.unpack('<i', point_cloud_data.coord2s[i])[0]) / 1000.0, 3)
-                        coord3 = round(float(struct.unpack('<i', point_cloud_data.coord3s[i])[0]) / 1000.0, 3)
-
-                        if coord1 or coord2 or coord3:
-                            num_pts += 1
-                    elif self.data_type == DataType.SPHERICAL:
-                        coord1 = round(float(struct.unpack('<I', point_cloud_data.coord1s[i])[0]) / 1000.0, 3)
-                        coord2 = round(float(struct.unpack('<H', point_cloud_data.coord2s[i])[0]) / 100.0, 2)
-                        coord3 = round(float(struct.unpack('<H', point_cloud_data.coord3s[i])[0]) / 100.0, 2)
-
-                        if coord1:
-                            num_pts += 1
-                        else:
-                            null_pts += 1
-                    else:
-                        raise ValueError("Unknown datatype.")
-
-                    return_nums_end = "\n"
-                    if self.firmware_type in [FirmwareType.DOUBLE_RETURN, FirmwareType.TRIPLE_RETURN]:
-                        return_nums_end = str(point_cloud_data.return_nums[i]) + return_nums_end
-
-                    csv_file.write(
-                        f"{coord1},{coord2},{coord3}," +
-                        f"{helper.bytes_to_int(point_cloud_data.intensities[i])}," +
-                        f"{round(point_cloud_data.timestamps[i], 6)}" +
-                        return_nums_end
-                    )
-
-                self.num_pts = num_pts
-                self.null_pts = null_pts
-
-                self.msg.print(f"   {self.sensor_ip}{self._format_spaces * 2}   -->     "
-                               f"closed ASCII file: {self.file_path_and_name}")
-                self.msg.print(f"{' ' * 20}(points: {num_pts} good, {null_pts} null, {num_pts + null_pts} total)")
-                csv_file.close()
-
-            else:
-                self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     "
-                               f"WARNING: no point cloud data was captured")
+            self.msg.print(f"   {self.sensor_ip}{self._format_spaces * 2}   -->     "
+                           f"closed ASCII file: {self.file_path_and_name}")
+            self.msg.print(f"{' ' * 20}(points: {num_pts} good, {null_pts} null, {num_pts + null_pts} total)")
+            csv_file.close()
 
         else:
-            self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     Incorrect lidar packet version")
+            self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     "
+                           f"WARNING: no point cloud data was captured")
 
     def run_realtime_csv(self):
         # read point cloud data packet to get packet version and datatype
@@ -237,564 +237,296 @@ class DataCaptureThread:
         version, _ = self.loop_until_capturing(verify=True)
 
         # check data packet is as expected (first byte anyways)
-        if version == 5:
-            # delayed start to capturing data check (secsToWait parameter)
-            self.loop_until_wait_time_is_over(self.start_time)
-            self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     CAPTURING DATA...")
+        if version != 5:
+            self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     Incorrect lidar packet version")
+            return
 
-            # duration adjustment (trying to get exactly 100,000 points / sec)
-            if self.duration != helper.get_seconds_in_x_years(years=4):
-                if self.firmware_type == FirmwareType.SINGLE_RETURN:
-                    self.duration += (0.001 * (self.duration / 2.0))
-                elif self.firmware_type == FirmwareType.DOUBLE_RETURN:
-                    self.duration += (0.0005 * (self.duration / 2.0))
-                elif self.firmware_type == FirmwareType.TRIPLE_RETURN:
-                    self.duration += (0.00055 * (self.duration / 2.0))
+        # delayed start to capturing data check (secsToWait parameter)
+        self.loop_until_wait_time_is_over(self.start_time)
+        self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     CAPTURING DATA...")
 
-            timestamp_sec = self.start_time
+        # duration adjustment (trying to get exactly 100,000 points / sec)
+        if self.duration != helper.get_seconds_in_x_years(years=4):
+            if self.firmware_type == FirmwareType.SINGLE_RETURN:
+                self.duration += (0.001 * (self.duration / 2.0))
+            elif self.firmware_type == FirmwareType.DOUBLE_RETURN:
+                self.duration += (0.0005 * (self.duration / 2.0))
+            elif self.firmware_type == FirmwareType.TRIPLE_RETURN:
+                self.duration += (0.00055 * (self.duration / 2.0))
 
-            self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     "
-                           f"writing real-time data to ASCII file: {self.file_path_and_name}")
-            csv_file = open(self.file_path_and_name, "w", 1)
+        timestamp_sec = self.start_time
 
-            num_pts = 0
-            null_pts = 0
+        self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     "
+                       f"writing real-time data to ASCII file: {self.file_path_and_name}")
+        csv_file = open(self.file_path_and_name, "w", 1)
 
-            # gather and write header info
-            if self.data_type == DataType.CARTESIAN:  # Cartesian
-                header_string = "//X,Y,Z,Intensity,Time"
-            elif self.data_type == DataType.SPHERICAL:  # Spherical
-                header_string = "//Distance,Zenith,Azimuth,Intensity,Time"
-            else:
-                raise ValueError("Unknown datatype.")
+        num_pts = 0
+        null_pts = 0
 
-            if self.firmware_type in [FirmwareType.DOUBLE_RETURN, FirmwareType.TRIPLE_RETURN]:
-                header_string += ",ReturnNum"
-            csv_file.write(header_string + "\n")
+        # gather and write header info
+        if self.data_type == DataType.CARTESIAN:  # Cartesian
+            header_string = "//X,Y,Z,Intensity,Time"
+        elif self.data_type == DataType.SPHERICAL:  # Spherical
+            header_string = "//Distance,Zenith,Azimuth,Intensity,Time"
+        else:
+            raise ValueError("Unknown datatype.")
 
-            # main loop that captures the desired point cloud data
-            while self.started:
-                time_since_start = timestamp_sec - self.start_time
-                if time_since_start <= self.duration:
+        if self.firmware_type in [FirmwareType.DOUBLE_RETURN, FirmwareType.TRIPLE_RETURN]:
+            header_string += ",ReturnNum"
+        csv_file.write(header_string + "\n")
 
-                    # read data from receive buffer
-                    if select.select([self.d_socket], [], [], 0)[0]:
-                        data_pc, addr = self.d_socket.recvfrom(1500)
+        # main loop that captures the desired point cloud data
+        while self.started:
+            time_since_start = timestamp_sec - self.start_time
+            if time_since_start <= self.duration:
 
-                        # update lidar status information
-                        self.updateStatus(data_pc[4:8])
-
-                        timestamp_type = helper.bytes_to_int(data_pc[8:9])
-                        timestamp_sec = self.getTimestamp(data_pc[10:18], timestamp_type)
-
-                        byte_pos = 18
-
-                        if self.firmware_type in [FirmwareType.SINGLE_RETURN, FirmwareType.DOUBLE_RETURN]:
-                            timestamp_step = 0.00001
-                        elif self.firmware_type == FirmwareType.TRIPLE_RETURN:
-                            timestamp_step = 0.000016666
-                        else:
-                            raise ValueError("Unknown firmware type.")
-
-                        # to account for first point's timestamp being increment in the loop
-                        timestamp_sec -= timestamp_step
-
-                        for i in range(0, 100):
-                            return_num = None
-                            if self.firmware_type == FirmwareType.SINGLE_RETURN:
-                                timestamp_sec += timestamp_step
-                            else:
-                                mod_firmware_type = i % self.firmware_type
-                                timestamp_sec += float(not mod_firmware_type) * timestamp_step
-                                return_num = mod_firmware_type + 1
-                            timestamp_sec += timestamp_step
-
-                            if self.data_type == DataType.CARTESIAN:
-                                coord2 = struct.unpack('<i', data_pc[byte_pos + 4:byte_pos + 8])[0]  # Y coordinate
-                                if coord2:
-                                    coord1 = struct.unpack('<i', data_pc[byte_pos:byte_pos + 4])[0]  # X coordinate
-                                    byte_pos += 8
-                                    coord3 = struct.unpack('<i', data_pc[byte_pos:byte_pos + 4])[0]  # Z coordinate
-                                    byte_pos += 4
-                                    intensity = helper.bytes_to_int(data_pc[byte_pos:byte_pos + 1])  # intensity
-
-                                    num_pts += 1
-                                else:
-                                    null_pts += 1
-                                    byte_pos += 13
-                                    continue
-                            elif self.data_type == DataType.SPHERICAL:
-                                coord1 = struct.unpack('<I', data_pc[byte_pos:byte_pos + 4])[0]  # Distance coordinate
-                                if coord1:
-                                    byte_pos += 4
-                                    coord2 = struct.unpack('<H', data_pc[byte_pos:byte_pos + 2])[0]  # Zenith coordinate
-                                    byte_pos += 2
-                                    coord3 = struct.unpack('<H', data_pc[byte_pos:byte_pos + 2])[0]  # Azimuth coordinate
-                                    byte_pos += 2
-                                    intensity = helper.bytes_to_int(data_pc[byte_pos:byte_pos + 1])  # intensity
-                                    byte_pos += 1
-
-                                    num_pts += 1
-                                else:
-                                    null_pts += 1
-                                    byte_pos += 9
-                                    continue
-                            else:
-                                raise ValueError("Unknown DataType.")
-
-                            return_nums_end = "\n"
-                            if self.firmware_type in [FirmwareType.DOUBLE_RETURN, FirmwareType.TRIPLE_RETURN]:
-                                return_nums_end = str(return_num) + return_nums_end
-
-                            division = 3
-                            if self.data_type == DataType.SPHERICAL:
-                                division = 2
-                            csv_file.write(
-                                f"{round(float(coord1) / 1000.0, 3)},"
-                                f"{round(float(coord2) / pow(10, division), division)},"
-                                f"{round(float(coord3) / pow(10, division), division)},"
-                                f"{intensity},{round(timestamp_sec, 6)},{return_nums_end}"
-                            )
-                # duration check (exit point)
-                else:
-                    self.started = False
-                    self.is_capturing = False
-                    break
-
-            self.num_pts = num_pts
-            self.null_pts = null_pts
-
-            self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     "
-                           f"closed ASCII file: {self.file_path_and_name}")
-            self.msg.print(f"{' ' * 32}(points: {num_pts} good, {null_pts} null, {num_pts + null_pts} total)")
-            csv_file.close()
-        self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     Incorrect lidar packet version")
-
-    def run_realtime_bin(self):
-
-        # read point cloud data packet to get packet version and datatype
-        # keep looping to 'consume' data that we don't want included in the captured point cloud data
-
-        breakByCapture = False
-
-        # used to check if the sensor is a Mid-100
-        deviceCheck = 0
-        try:
-            deviceCheck = int(self._device_type[4:7])
-        except:
-            pass
-
-        while True:
-
-            if self.started:
-                selectTest = select.select([self.d_socket], [], [], 0)
-                if selectTest[0]:
+                # read data from receive buffer
+                if select.select([self.d_socket], [], [], 0)[0]:
                     data_pc, addr = self.d_socket.recvfrom(1500)
-                    version = int.from_bytes(data_pc[0:1], byteorder='little')
-                    self.data_type = int.from_bytes(data_pc[9:10], byteorder='little')
-                    timestamp_type = int.from_bytes(data_pc[8:9], byteorder='little')
-                    timestamp1 = self.getTimestamp(data_pc[10:18], timestamp_type)
+
+                    # update lidar status information
                     self.updateStatus(data_pc[4:8])
-                    if self.is_capturing:
-                        self.start_time = timestamp1
-                        breakByCapture = True
-                        break
+
+                    timestamp_type = helper.bytes_to_int(data_pc[8:9])
+                    timestamp_sec = self.getTimestamp(data_pc[10:18], timestamp_type)
+
+                    byte_pos = 18
+
+                    if self.firmware_type in [FirmwareType.SINGLE_RETURN, FirmwareType.DOUBLE_RETURN]:
+                        timestamp_step = 0.00001
+                    elif self.firmware_type == FirmwareType.TRIPLE_RETURN:
+                        timestamp_step = 0.000016666
+                    else:
+                        raise ValueError("Unknown firmware type.")
+
+                    # to account for first point's timestamp being increment in the loop
+                    timestamp_sec -= timestamp_step
+
+                    for i in range(0, 100):
+                        return_num = None
+                        if self.firmware_type == FirmwareType.SINGLE_RETURN:
+                            timestamp_sec += timestamp_step
+                        else:
+                            mod_firmware_type = i % self.firmware_type
+                            timestamp_sec += float(not mod_firmware_type) * timestamp_step
+                            return_num = mod_firmware_type + 1
+                        timestamp_sec += timestamp_step
+
+                        if self.data_type == DataType.CARTESIAN:
+                            coord2 = struct.unpack('<i', data_pc[byte_pos + 4:byte_pos + 8])[0]  # Y coordinate
+                            if coord2:
+                                coord1 = struct.unpack('<i', data_pc[byte_pos:byte_pos + 4])[0]  # X coordinate
+                                byte_pos += 8
+                                coord3 = struct.unpack('<i', data_pc[byte_pos:byte_pos + 4])[0]  # Z coordinate
+                                byte_pos += 4
+                                intensity = helper.bytes_to_int(data_pc[byte_pos:byte_pos + 1])  # intensity
+
+                                num_pts += 1
+                            else:
+                                null_pts += 1
+                                byte_pos += 13
+                                continue
+                        elif self.data_type == DataType.SPHERICAL:
+                            coord1 = struct.unpack('<I', data_pc[byte_pos:byte_pos + 4])[0]  # Distance coordinate
+                            if coord1:
+                                byte_pos += 4
+                                coord2 = struct.unpack('<H', data_pc[byte_pos:byte_pos + 2])[0]  # Zenith coordinate
+                                byte_pos += 2
+                                coord3 = struct.unpack('<H', data_pc[byte_pos:byte_pos + 2])[0]  # Azimuth coordinate
+                                byte_pos += 2
+                                intensity = helper.bytes_to_int(data_pc[byte_pos:byte_pos + 1])  # intensity
+                                byte_pos += 1
+
+                                num_pts += 1
+                            else:
+                                null_pts += 1
+                                byte_pos += 9
+                                continue
+                        else:
+                            raise ValueError("Unknown DataType.")
+
+                        return_nums_end = "\n"
+                        if self.firmware_type in [FirmwareType.DOUBLE_RETURN, FirmwareType.TRIPLE_RETURN]:
+                            return_nums_end = str(return_num) + return_nums_end
+
+                        division = 3
+                        if self.data_type == DataType.SPHERICAL:
+                            division = 2
+                        csv_file.write(
+                            f"{round(float(coord1) / 1000.0, 3)},"
+                            f"{round(float(coord2) / pow(10, division), division)},"
+                            f"{round(float(coord3) / pow(10, division), division)},"
+                            f"{intensity},{round(timestamp_sec, 6)},{return_nums_end}"
+                        )
+            # duration check (exit point)
             else:
+                self.started = False
+                self.is_capturing = False
                 break
 
-        if breakByCapture:
+        self.num_pts = num_pts
+        self.null_pts = null_pts
 
-            # check data packet is as expected (first byte anyways)
-            if version == 5:
+        self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     "
+                       f"closed ASCII file: {self.file_path_and_name}")
+        self.msg.print(f"{' ' * 32}(points: {num_pts} good, {null_pts} null, {num_pts + null_pts} total)")
+        csv_file.close()
 
-                # delayed start to capturing data check (secsToWait parameter)
-                timestamp2 = self.start_time
-                while True:
-                    if self.started:
-                        timeSinceStart = timestamp2 - self.start_time
-                        if timeSinceStart <= self.secs_to_wait:
-                            # read data from receive buffer and keep 'consuming' it
-                            if select.select([self.d_socket], [], [], 0)[0]:
-                                data_pc, addr = self.d_socket.recvfrom(1500)
-                                timestamp_type = int.from_bytes(data_pc[8:9], byteorder='little')
-                                timestamp2 = self.getTimestamp(data_pc[10:18], timestamp_type)
-                                self.updateStatus(data_pc[4:8])
-                            if select.select([self.i_socket], [], [], 0)[0]:
-                                imu_data, addr2 = self.i_socket.recvfrom(50)
+    def run_realtime_bin(self):
+        # used to check if the sensor is a Mid-100
+        device_check = 0
+        try:
+            device_check = int(self._device_type[4:7])
+        except:  # Todo: Add type of exception. To know which, use a non Mid-100 and comment this code
+            pass
+
+        version, _ = self.loop_until_capturing(verify=True)
+
+        # check data packet is as expected (first byte anyways)
+        if version != 5:
+            self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     Incorrect lidar packet version")
+            return
+
+        self.loop_until_wait_time_is_over(self.start_time, check_i_socket=True)
+        self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     CAPTURING DATA...")
+
+        timestamp_sec = self.start_time
+
+        self.msg.print(
+            f"   {self.sensor_ip}{self._format_spaces}   -->     "
+            f"writing real-time data to BINARY file: {self.file_path_and_name}"
+        )
+        bin_file = open(self.file_path_and_name, "wb")
+        imu_file = None
+        imu_reporting = False
+
+        num_pts = 0
+        null_pts = 0
+        imu_records = 0
+
+        # write header info to know how to parse the data later
+        bin_file.write(str.encode("OPENPYLIVOX"))
+        bin_file.write(struct.pack('<h', self.firmware_type))
+        bin_file.write(struct.pack('<h', self.data_type))
+
+        # main loop that captures the desired point cloud data
+        while self.started:
+            time_since_start = timestamp_sec - self.start_time
+            if time_since_start <= self.duration:
+
+                # read points from data buffer
+                if select.select([self.d_socket], [], [], 0)[0]:
+                    data_pc, addr = self.d_socket.recvfrom(1500)
+
+                    # update lidar status information
+                    self.updateStatus(data_pc[4:8])
+                    data_type = int.from_bytes(data_pc[9:10], byteorder='little')
+                    timestamp_type = int.from_bytes(data_pc[8:9], byteorder='little')
+                    timestamp_sec = self.getTimestamp(data_pc[10:18], timestamp_type)
+
+                    byte_pos = 18
+
+                    loops = 100
+                    timestamp_step = 0.00001
+                    if data_type in [2, 3]:  # [Cartesian, Spherical] -> Horizon and Tele-15 sensors (single return)
+                        loops = 96
+                        timestamp_step = 0.000004167
+                    elif data_type in [4, 5]:  # [Cartesian, Spherical] -> Horizon and Tele-15 sensors (dual return)
+                        loops = 48
+                        timestamp_step = 0.000002083
+                    if self.firmware_type == FirmwareType.TRIPLE_RETURN:
+                        timestamp_step = 0.000016666
+
+                    return_num = None
+                    timestamp_sec -= timestamp_step
+                    for i in range(loops):
+                        if self.firmware_type in [FirmwareType.DOUBLE_RETURN, FirmwareType.TRIPLE_RETURN]:
+                            mod_firmware_type = i % self.firmware_type
+                            timestamp_sec += float(not mod_firmware_type) * timestamp_step
+                            return_num = mod_firmware_type + 1
                         else:
-                            self.start_time = timestamp2
-                            break
-                    else:
-                        break
-
-                self.msg.print("   " + self.sensor_ip + self._format_spaces + "   -->     CAPTURING DATA...")
-
-                timestamp_sec = self.start_time
-
-                self.msg.print(
-                    "   " + self.sensor_ip + self._format_spaces + "   -->     writing real-time data to BINARY file: " + self.file_path_and_name)
-                binFile = open(self.file_path_and_name, "wb")
-                IMU_file = None
-
-                IMU_reporting = False
-                numPts = 0
-                nullPts = 0
-                imu_records = 0
-
-                # write header info to know how to parse the data later
-                binFile.write(str.encode("OPENPYLIVOX"))
-                binFile.write(struct.pack('<h', self.firmware_type))
-                binFile.write(struct.pack('<h', self.data_type))
-
-                # main loop that captures the desired point cloud data
-                while True:
-                    if self.started:
-                        timeSinceStart = timestamp_sec - self.start_time
-
-                        if timeSinceStart <= self.duration:
-
-                            # read points from data buffer
-                            if select.select([self.d_socket], [], [], 0)[0]:
-                                data_pc, addr = self.d_socket.recvfrom(1500)
-
-                                # version = int.from_bytes(data_pc[0:1], byteorder='little')
-                                # slot_id = int.from_bytes(data_pc[1:2], byteorder='little')
-                                # lidar_id = int.from_bytes(data_pc[2:3], byteorder='little')
-
-                                # byte 3 is reserved
-
-                                # update lidar status information
-                                self.updateStatus(data_pc[4:8])
-                                dataType = int.from_bytes(data_pc[9:10], byteorder='little')
-                                timestamp_type = int.from_bytes(data_pc[8:9], byteorder='little')
-                                timestamp_sec = self.getTimestamp(data_pc[10:18], timestamp_type)
-
-                                bytePos = 18
-
-                                # single return firmware (relevant for Mid-40 and Mid-100)
-                                # Horizon and Tele-15 sensors also fall under this 'if' statement
-                                if self.firmware_type == FirmwareType.SINGLE_RETURN:
-
-                                    # Cartesian Coordinate System
-                                    if dataType == 0:
-                                        # to account for first point's timestamp being increment in the loop
-                                        timestamp_sec -= 0.00001
-
-                                        for i in range(0, 100):
-
-                                            # Y coordinate (check for non-zero)
-                                            coord2 = struct.unpack('<i', data_pc[bytePos + 4:bytePos + 8])[0]
-
-                                            # timestamp
-                                            timestamp_sec += 0.00001
-
-                                            if deviceCheck == 100:
-                                                numPts += 1
-                                                binFile.write(data_pc[bytePos:bytePos + 13])
-                                                binFile.write(struct.pack('<d', timestamp_sec))
-                                            else:
-                                                if coord2:
-                                                    numPts += 1
-                                                    binFile.write(data_pc[bytePos:bytePos + 13])
-                                                    binFile.write(struct.pack('<d', timestamp_sec))
-                                                else:
-                                                    nullPts += 1
-
-                                            bytePos += 13
-
-                                    # Spherical Coordinate System
-                                    elif dataType == 1:
-                                        # to account for first point's timestamp being increment in the loop
-                                        timestamp_sec -= 0.00001
-
-                                        for i in range(0, 100):
-
-                                            # Distance coordinate (check for non-zero)
-                                            coord1 = struct.unpack('<I', data_pc[bytePos:bytePos + 4])[0]
-
-                                            # timestamp
-                                            timestamp_sec += 0.00001
-
-                                            if coord1:
-                                                numPts += 1
-                                                binFile.write(data_pc[bytePos:bytePos + 9])
-                                                binFile.write(struct.pack('<d', timestamp_sec))
-                                            else:
-                                                nullPts += 1
-
-                                            bytePos += 9
-
-                                    # Horizon and Tele-15 Cartesian (single return)
-                                    elif dataType == 2:
-                                        # to account for first point's timestamp being increment in the loop
-                                        timestamp_sec -= 0.000004167
-                                        for i in range(0, 96):
-
-                                            # Y coordinate (check for non-zero)
-                                            coord2 = struct.unpack('<i', data_pc[bytePos + 4:bytePos + 8])[0]
-
-                                            # timestamp
-                                            timestamp_sec += 0.000004167
-
-                                            if coord2:
-                                                numPts += 1
-                                                binFile.write(data_pc[bytePos:bytePos + 14])
-                                                binFile.write(struct.pack('<d', timestamp_sec))
-                                            else:
-                                                nullPts += 1
-
-                                            bytePos += 14
-
-                                    # Horizon and Tele-15 Spherical (single return)
-                                    elif dataType == 3:
-                                        # to account for first point's timestamp being increment in the loop
-                                        timestamp_sec -= 0.000004167
-                                        for i in range(0, 96):
-
-                                            # Distance coordinate (check for non-zero)
-                                            coord1 = struct.unpack('<I', data_pc[bytePos:bytePos + 4])[0]
-
-                                            # timestamp
-                                            timestamp_sec += 0.00001
-
-                                            if coord1:
-                                                numPts += 1
-                                                binFile.write(data_pc[bytePos:bytePos + 10])
-                                                binFile.write(struct.pack('<d', timestamp_sec))
-                                            else:
-                                                nullPts += 1
-
-                                            bytePos += 10
-
-                                    # Horizon and Tele-15 Cartesian (dual return)
-                                    elif dataType == 4:
-                                        # to account for first point's timestamp being increment in the loop
-                                        timestamp_sec -= 0.000002083
-                                        for i in range(0, 48):
-
-                                            # Y coordinate (check for non-zero)
-                                            coord2 = struct.unpack('<i', data_pc[bytePos + 4:bytePos + 8])[0]
-
-                                            # timestamp
-                                            timestamp_sec += 0.000002083
-
-                                            if coord2:
-                                                numPts += 1
-                                                binFile.write(data_pc[bytePos:bytePos + 28])
-                                                binFile.write(struct.pack('<d', timestamp_sec))
-                                            else:
-                                                nullPts += 1
-
-                                            bytePos += 28
-
-                                    # Horizon and Tele-15 Spherical (dual return)
-                                    elif dataType == 5:
-                                        # to account for first point's timestamp being increment in the loop
-                                        timestamp_sec -= 0.000002083
-                                        for i in range(0, 48):
-
-                                            # Distance coordinate (check for non-zero)
-                                            coord1 = struct.unpack('<I', data_pc[bytePos:bytePos + 4])[0]
-
-                                            # timestamp
-                                            timestamp_sec += 0.00001
-
-                                            if coord1:
-                                                numPts += 1
-                                                binFile.write(data_pc[bytePos:bytePos + 16])
-                                                binFile.write(struct.pack('<d', timestamp_sec))
-                                            else:
-                                                nullPts += 1
-
-                                            bytePos += 16
-
-                                # double return firmware (Mid-40 and Mid-100 only)
-                                elif self.firmware_type == FirmwareType.DOUBLE_RETURN:
-                                    # to account for first point's timestamp being increment in the loop
-                                    timestamp_sec -= 0.00001
-
-                                    # Cartesian Coordinate System
-                                    if self.data_type == DataType.CARTESIAN:
-                                        for i in range(0, 100):
-                                            returnNum = 1
-
-                                            # Y coordinate (check for non-zero)
-                                            coord2 = struct.unpack('<i', data_pc[bytePos + 4:bytePos + 8])[0]
-
-                                            zeroORtwo = i % 2
-
-                                            # timestamp
-                                            timestamp_sec += float(not (zeroORtwo)) * 0.00001
-
-                                            # return number
-                                            returnNum += zeroORtwo * 1
-
-                                            if deviceCheck == 100:
-                                                numPts += 1
-                                                binFile.write(data_pc[bytePos:bytePos + 13])
-                                                binFile.write(struct.pack('<d', timestamp_sec))
-                                                binFile.write(str.encode(str(returnNum)))
-                                            else:
-                                                if coord2:
-                                                    numPts += 1
-                                                    binFile.write(data_pc[bytePos:bytePos + 13])
-                                                    binFile.write(struct.pack('<d', timestamp_sec))
-                                                    binFile.write(str.encode(str(returnNum)))
-                                                else:
-                                                    nullPts += 1
-
-                                            bytePos += 13
-
-                                    # Spherical Coordinate System
-                                    elif self.data_type == DataType.SPHERICAL:
-                                        for i in range(0, 100):
-                                            returnNum = 1
-
-                                            # Distance coordinate (check for non-zero)
-                                            coord1 = struct.unpack('<I', data_pc[bytePos:bytePos + 4])[0]
-
-                                            zeroORtwo = i % 2
-
-                                            # timestamp
-                                            timestamp_sec += float(not (zeroORtwo)) * 0.00001
-
-                                            # return number
-                                            returnNum += zeroORtwo * 1
-
-                                            if coord1:
-                                                numPts += 1
-                                                binFile.write(data_pc[bytePos:bytePos + 9])
-                                                binFile.write(struct.pack('<d', timestamp_sec))
-                                                binFile.write(str.encode(str(returnNum)))
-                                            else:
-                                                nullPts += 1
-
-                                            bytePos += 9
-
-                                # triple return firmware (Mid-40 and Mid-100 only)
-                                elif self.firmware_type == FirmwareType.TRIPLE_RETURN:
-                                    # to account for first point's timestamp being increment in the loop
-                                    timestamp_sec -= 0.000016667
-
-                                    # Cartesian Coordinate System
-                                    if self.data_type == DataType.CARTESIAN:
-                                        for i in range(0, 100):
-                                            returnNum = 1
-
-                                            # Y coordinate (check for non-zero)
-                                            coord2 = struct.unpack('<i', data_pc[bytePos + 4:bytePos + 8])[0]
-
-                                            zeroORoneORtwo = i % 3
-
-                                            # timestamp
-                                            timestamp_sec += float(not (zeroORoneORtwo)) * 0.000016666
-
-                                            # return number
-                                            returnNum += zeroORoneORtwo * 1
-
-                                            if deviceCheck == 100:
-                                                numPts += 1
-                                                binFile.write(data_pc[bytePos:bytePos + 13])
-                                                binFile.write(struct.pack('<d', timestamp_sec))
-                                                binFile.write(str.encode(str(returnNum)))
-                                            else:
-                                                if coord2:
-                                                    numPts += 1
-                                                    binFile.write(data_pc[bytePos:bytePos + 13])
-                                                    binFile.write(struct.pack('<d', timestamp_sec))
-                                                    binFile.write(str.encode(str(returnNum)))
-                                                else:
-                                                    nullPts += 1
-
-                                            bytePos += 13
-
-                                    # Spherical Coordinate System
-                                    elif self.data_type == DataType.SPHERICAL:
-                                        for i in range(0, 100):
-                                            returnNum = 1
-
-                                            # Distance coordinate (check for non-zero)
-                                            coord1 = struct.unpack('<I', data_pc[bytePos:bytePos + 4])[0]
-
-                                            zeroORoneORtwo = i % 3
-
-                                            # timestamp
-                                            timestamp_sec += float(not (zeroORoneORtwo)) * 0.000016666
-
-                                            # return number
-                                            returnNum += zeroORoneORtwo * 1
-
-                                            if coord1:
-                                                numPts += 1
-                                                binFile.write(data_pc[bytePos:bytePos + 9])
-                                                binFile.write(struct.pack('<d', timestamp_sec))
-                                                binFile.write(str.encode(str(returnNum)))
-                                            else:
-                                                nullPts += 1
-
-                                            bytePos += 9
-
-                            # IMU data capture
-                            if select.select([self.i_socket], [], [], 0)[0]:
-                                imu_data, addr2 = self.i_socket.recvfrom(50)
-
-                                # version = int.from_bytes(imu_data[0:1], byteorder='little')
-                                # slot_id = int.from_bytes(imu_data[1:2], byteorder='little')
-                                # lidar_id = int.from_bytes(imu_data[2:3], byteorder='little')
-
-                                # byte 3 is reserved
-
-                                # update lidar status information
-                                # self.updateStatus(imu_data[4:8])
-
-                                dataType = int.from_bytes(imu_data[9:10], byteorder='little')
-                                timestamp_type = int.from_bytes(imu_data[8:9], byteorder='little')
-                                timestamp_sec = self.getTimestamp(imu_data[10:18], timestamp_type)
-
-                                bytePos = 18
-
-                                # Horizon and Tele-15 IMU data packet
-                                if dataType == 6:
-                                    if not IMU_reporting:
-                                        IMU_reporting = True
-                                        path_file = Path(self.file_path_and_name)
-                                        filename = path_file.stem
-                                        exten = path_file.suffix
-                                        IMU_file = open(filename + "_IMU" + exten, "wb")
-                                        IMU_file.write(str.encode("OPENPYLIVOX_IMU"))
-
-                                    IMU_file.write(imu_data[bytePos:bytePos + 24])
-                                    IMU_file.write(struct.pack('<d', timestamp_sec))
-                                    imu_records += 1
-
-                        # duration check (exit point)
+                            timestamp_sec += timestamp_step
+
+                        if data_type in [DataType.CARTESIAN, 2, 4]:  # 2,4 are Cartesian
+                            coord = struct.unpack('<i', data_pc[byte_pos + 4:byte_pos + 8])[0]
+                        elif data_type in [DataType.CARTESIAN, 3, 5]:  # 3, 5 are Spherical
+                            coord = struct.unpack('<I', data_pc[byte_pos:byte_pos + 4])[0]
                         else:
-                            self.started = False
-                            self.is_capturing = False
-                            break
-                    # thread still running check (exit point)
-                    else:
-                        break
+                            raise ValueError("Unknown datatype.")
 
-                self.num_pts = numPts
-                self.null_pts = nullPts
-                self.imu_records = imu_records
+                        # Only check for `device == 100` in specific scenario
+                        check_for_device_type = (
+                                self.firmware_type == FirmwareType.SINGLE_RETURN and
+                                data_type == DataType.CARTESIAN
+                        )
 
-                self.msg.print(
-                        "   " + self.sensor_ip + self._format_spaces + "   -->     closed BINARY file: " + self.file_path_and_name)
-                self.msg.print("                                (points: " + str(numPts) + " good, " + str(
-                    nullPts) + " null, " + str(numPts + nullPts) + " total)")
-                if self._device_type == "Horizon" or self._device_type == "Tele-15":
-                    self.msg.print("                                (IMU records: " + str(imu_records) + ")")
+                        if data_type == DataType.CARTESIAN:
+                            jump_bytes = 13
+                        elif data_type == DataType.SPHERICAL:
+                            jump_bytes = 9
+                        elif data_type == 2:  # Cartesian -> Horizon and Tele-15 sensors (single return)
+                            jump_bytes = 14
+                        elif data_type == 3:  # Spherical -> Horizon and Tele-15 sensors (single return)
+                            jump_bytes = 10
+                        elif data_type == 4:  # Cartesian -> Horizon and Tele-15 sensors (dual return)
+                            jump_bytes = 28
+                        elif data_type == 5:  # Spherical -> Horizon and Tele-15 sensors (dual return)
+                            jump_bytes = 16
+                        else:
+                            raise ValueError("Unknown datatype.")
 
-                binFile.close()
+                        if (check_for_device_type and device_check == 100) or coord:
+                            num_pts += 1
+                            bin_file.write(data_pc[byte_pos:byte_pos + jump_bytes])
+                            bin_file.write(struct.pack('<d', timestamp_sec))
+                            if self.firmware_type in [FirmwareType.DOUBLE_RETURN, FirmwareType.TRIPLE_RETURN]:
+                                bin_file.write(str.encode(str(return_num)))
+                        else:
+                            null_pts += 1
+                        byte_pos += jump_bytes
 
-                if IMU_reporting:
-                    IMU_file.close()
+                # IMU data capture
+                if select.select([self.i_socket], [], [], 0)[0]:
+                    imu_data, addr2 = self.i_socket.recvfrom(50)
 
-            else:
-                self.msg.print(
-                    "   " + self.sensor_ip + self._format_spaces + "   -->     Incorrect packet version")
+                    data_type = helper.bytes_to_int(imu_data[9:10])
+                    timestamp_type = helper.bytes_to_int(imu_data[8:9])
+                    timestamp_sec = self.getTimestamp(imu_data[10:18], timestamp_type)
+
+                    byte_pos = 18
+
+                    # Horizon and Tele-15 IMU data packet
+                    if data_type == 6:
+                        if not imu_reporting:
+                            imu_reporting = True
+                            path_file = Path(self.file_path_and_name)
+                            filename = path_file.stem
+                            extension = path_file.suffix
+                            imu_file = open(filename + "_IMU" + extension, "wb")
+                            imu_file.write(str.encode("OPENPYLIVOX_IMU"))
+
+                        imu_file.write(imu_data[byte_pos:byte_pos + 24])
+                        imu_file.write(struct.pack('<d', timestamp_sec))
+                        imu_records += 1
+            else:  # duration check (exit point)
+                self.started = False
+                self.is_capturing = False
+                break
+
+        self.num_pts = num_pts
+        self.null_pts = null_pts
+        self.imu_records = imu_records
+
+        self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     "
+                       f"closed BINARY file: {self.file_path_and_name}")
+        self.msg.print(f"{' ' * 32}(points: {num_pts} good, {null_pts} null, {num_pts + null_pts} total)")
+        if self._device_type == "Horizon" or self._device_type == "Tele-15":
+            self.msg.print(f"{' ' * 32}(IMU records: {imu_records})")
+
+        bin_file.close()
+
+        if imu_reporting:
+            imu_file.close()
 
     def loop_until_capturing(self, verify=True):
         """
@@ -823,7 +555,7 @@ class DataCaptureThread:
                 raise ValueError("Unable to start capturing. Not started yet.")
         return version, break_by_capture
 
-    def loop_until_wait_time_is_over(self, start_time):
+    def loop_until_wait_time_is_over(self, start_time, check_i_socket=False):
         while self.started:
             time_since_start = start_time - self.start_time
             if time_since_start <= self.secs_to_wait:
@@ -833,6 +565,9 @@ class DataCaptureThread:
                     timestamp_type = helper.bytes_to_int(data_pc[8:9])
                     start_time = self.getTimestamp(data_pc[10:18], timestamp_type)
                     self.updateStatus(data_pc[4:8])
+                if check_i_socket:
+                    if select.select([self.i_socket], [], [], 0)[0]:
+                        imu_data, addr2 = self.i_socket.recvfrom(50)
             else:
                 self.start_time = start_time
                 break
@@ -888,7 +623,8 @@ class DataCaptureThread:
                 if self.motor_status == 1:
                     self.msg.print("   " + self.sensor_ip + self._format_spaces + "   -->     * WARNING: motor *")
                 if self.dirty_status == 1:
-                    self.msg.print("   " + self.sensor_ip + self._format_spaces + "   -->     * WARNING: dirty or blocked *")
+                    self.msg.print(
+                        "   " + self.sensor_ip + self._format_spaces + "   -->     * WARNING: dirty or blocked *")
                 if self.device_status == 1:
                     self.msg.print(
                         "   " + self.sensor_ip + self._format_spaces + "   -->     * WARNING: approaching end of service life *")
@@ -896,7 +632,8 @@ class DataCaptureThread:
                     self.msg.print("   " + self.sensor_ip + self._format_spaces + "   -->     * WARNING: fan *")
             elif self.system_status == 2:
                 if self.temp_status == 2:
-                    self.msg.print("   " + self.sensor_ip + self._format_spaces + "   -->     *** ERROR: TEMPERATURE ***")
+                    self.msg.print(
+                        "   " + self.sensor_ip + self._format_spaces + "   -->     *** ERROR: TEMPERATURE ***")
                 if self.volt_status == 2:
                     self.msg.print("   " + self.sensor_ip + self._format_spaces + "   -->     *** ERROR: VOLTAGE ***")
                 if self.motor_status == 2:
