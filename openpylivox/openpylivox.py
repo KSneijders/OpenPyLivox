@@ -771,10 +771,8 @@ class OpenPyLivox:
             self.msg.print("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to spin down the lidar")
         if response == 0:
             pass
-        elif response == 2:
+        elif response == -1:
             self.msg.print("   " + self._sensorIP + self._format_spaces + "   -->     incorrect lidar spin down response")
-        else:
-            self.msg.print("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def lidarSpinDown(self):
         self._lidarSpinDown()
@@ -788,9 +786,6 @@ class OpenPyLivox:
             self.msg.print("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to set lidar to stand-by")
         elif response == -1:
             self.msg.print("   " + self._sensorIP + self._format_spaces + "   -->     incorrect lidar stand-by response")
-        else:
-            print(response)
-
 
     def lidarStandBy(self):
         self._lidarStandBy()
@@ -909,35 +904,15 @@ class OpenPyLivox:
             self._mid100_sensors[i]._dataStart_RT_B()
 
     def _dataStop(self):
-
-        if self._isConnected:
-            if self._isData:
-                self._waitForIdle()
-                self._cmdSocket.sendto(sdkdefs.CMD_DATA_STOP, (self._sensorIP, 65000))
-                self.msg.print("   " + self._sensorIP + self._format_spaces + "   <--     sent stop data stream request")
-
-                # check for proper response from data stop request
-                if select.select([self._cmdSocket], [], [], 0.1)[0]:
-                    binData, addr = self._cmdSocket.recvfrom(16)
-                    _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
-
-                    if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "4":
-                        ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
-                        if ret_code == 1:
-                            self.msg.print("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to stop data stream")
-                        else:
-                            self._isData = False
-                            if self._captureStream is not None:
-                                self._captureStream.stop()
-                                self._captureStream = None
-                            self._isWriting = False
-                            time.sleep(0.1)
-                    else:
-                        self.msg.print("   " + self._sensorIP + self._format_spaces + "   -->     incorrect stop data stream response")
-            else:
-                self.msg.print("   " + self._sensorIP + self._format_spaces + "   -->     data stream already stopped")
-        else:
-            self.msg.print("Not connected to Livox sensor at IP: " + self._sensorIP)
+        if not self._isData:
+            self.msg.print("   " + self._sensorIP + self._format_spaces + "   -->     data stream already stopped")
+            return
+        response = self.send_command(sdkdefs.CMD_DATA_STOP)
+        self.msg.print("   " + self._sensorIP + self._format_spaces + "   <--     sent stop data stream request")
+        if response == 1:
+            self.msg.print("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to stop data stream")
+        elif response == -1:
+            self.msg.print("   " + self._sensorIP + self._format_spaces + "   -->     incorrect stop data stream response")
 
     def dataStop(self):
         self._dataStop()
