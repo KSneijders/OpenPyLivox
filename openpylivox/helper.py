@@ -196,9 +196,9 @@ def get_timestamp(data_pc, timestamp_type):
         timestamp_sec = round(float(struct.unpack('<Q', data_pc[0:8])[0]) / 1000000000.0, 6)  # convert to seconds
     # UTC timestamp, microseconds past the hour
     elif timestamp_type == 3:
-        timestamp_year = bytes_to_int(data_pc[0:1])
-        timestamp_month = bytes_to_int(data_pc[1:2])
-        timestamp_day = bytes_to_int(data_pc[2:3])
+        # timestamp_year = bytes_to_int(data_pc[0:1])
+        # timestamp_month = bytes_to_int(data_pc[1:2])
+        # timestamp_day = bytes_to_int(data_pc[2:3])
         timestamp_hour = bytes_to_int(data_pc[3:4])
         timestamp_sec = round(float(struct.unpack('<L', data_pc[4:8])[0]) / 1000000.0, 6)  # convert to seconds
 
