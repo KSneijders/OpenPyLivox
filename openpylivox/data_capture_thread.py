@@ -619,13 +619,22 @@ class DataCaptureThread:
                     self.msg.print(f"   {self.sensor_ip}{self._format_spaces}   -->     *** ERROR: ABNORMAL FIRMWARE ***")
 
     # returns latest status Codes from within the point cloud data packet
-    def statusCodes(self):
-
-        return [self.system_status, self.temp_status, self.volt_status, self.motor_status, self.dirty_status,
-                self.firmware_status, self.pps_status, self.device_status, self.fan_status, self.self_heating_status,
-                self.ptp_status, self.time_sync_status]
+    def status_codes(self):
+        return [
+            self.system_status,
+            self.temp_status,
+            self.volt_status,
+            self.motor_status,
+            self.dirty_status,
+            self.firmware_status,
+            self.pps_status,
+            self.device_status,
+            self.fan_status,
+            self.self_heating_status,
+            self.ptp_status,
+            self.time_sync_status
+        ]
 
     def stop(self):
-
         self.started = False
         self.thread.join()
