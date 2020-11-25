@@ -1501,7 +1501,7 @@ class OpenPyLivox:
     def lidarStatusCodes(self):
         if self._isConnected:
             if self._captureStream is not None:
-                codes = self._captureStream.statusCodes()
+                codes = self._captureStream.status_codes()
                 if self._show_messages:
                     sys_mess = "UNKNOWN"
                     if codes[0] == 0:
