@@ -271,7 +271,7 @@ class OpenPyLivox:
 
     def _waitForIdle(self):
 
-        while self._heartbeat.idle_state != 9:
+        while self._heartbeat.idle_state:
             time.sleep(0.1)
 
     def _disconnectSensor(self):
@@ -497,7 +497,7 @@ class OpenPyLivox:
                         ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                         if ret_code == 0:
                             self._isConnected = True
-                            self._heartbeat = HeartbeatThread(1, self._cmdSocket, self._sensorIP, 65000,
+                            self._heartbeat = HeartbeatThread(0.1, self._cmdSocket, self._sensorIP, 65000,
                                                               sdkdefs.CMD_HEARTBEAT, self._show_messages,
                                                               self._format_spaces)
                             time.sleep(0.15)

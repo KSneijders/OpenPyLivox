@@ -82,6 +82,16 @@ class Msg:
 ################################################################ """
 
 
+class DataResponse:
+
+    def __init__(self, data_is_valid, cmd_message, data_message, data_id, data):
+        self.data = data
+        self.data_id = data_id
+        self.data_message = data_message
+        self.cmd_message = cmd_message
+        self.data_is_valid = data_is_valid
+
+
 def _parse_resp(show_message, bin_data):
     data_bytes = []
     data_string = ""
@@ -156,7 +166,7 @@ def _parse_resp(show_message, bin_data):
         if show_message:
             print("CRC16 Checksum Error")
 
-    return data_is_valid, cmd_message, data_message, data_id, data
+    return DataResponse(data_is_valid, cmd_message, data_message, data_id, data)
 
 
 def adjust_duration(firmware_type, duration):
