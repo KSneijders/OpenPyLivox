@@ -442,7 +442,7 @@ class DataCaptureThread:
 
                         if data_type in [DataType.CARTESIAN, 2, 4]:  # 2,4 are Cartesian
                             coord = struct.unpack('<i', data_pc[byte_pos + 4:byte_pos + 8])[0]
-                        elif data_type in [DataType.CARTESIAN, 3, 5]:  # 3, 5 are Spherical
+                        elif data_type in [DataType.SPHERICAL, 3, 5]:  # 3, 5 are Spherical
                             coord = struct.unpack('<I', data_pc[byte_pos:byte_pos + 4])[0]
                         else:
                             raise ValueError("Unknown datatype.")
