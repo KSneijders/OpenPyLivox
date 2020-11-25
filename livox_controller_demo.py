@@ -67,7 +67,7 @@ def singleSensorDemo():
         sensor.showMessages(True)
 
         # set the output coordinate system to Spherical
-        # sensor.setSphericalCS()
+        sensor.setSphericalCS()
 
         # set the output coordinate system to Cartesian (sensor default)
         # sensor.setCartesianCS()
@@ -134,7 +134,7 @@ def singleSensorDemo():
 
         filePathAndName = "test.bin"  # file extension is NOT used to automatically determine if ASCII or Binary data is stored
         secsToWait = 0.1  # seconds, time delayed data capture start
-        duration = 3.0  # seconds, zero (0) specifies an indefinite duration
+        duration = 3  # seconds, zero (0) specifies an indefinite duration
 
         # (*** IMPORTANT: this command starts a new thread, so the current program (thread) needs to exist for the 'duration' ***)
         # capture the data stream and save it to a file (if applicable, IMU data stream will also be saved to a file)
@@ -174,7 +174,8 @@ def singleSensorDemo():
         # convert BINARY point data to LAS file and IMU data (if applicable) to CSV file
         # only works in conjunction with .dataStart_RT_B()
         # designed so the efficiently collected binary point data can be converted to LAS at any time after data collection
-        opl.convertBin2LAS(filePathAndName, deleteBin=True)
+        #opl.convertBin2LAS(filePathAndName, deleteBin=False)
+        opl.convertBin2CSV(filePathAndName, deleteBin=True)
 
         # convert BINARY point data and IMU data (if applicable) to CSV files
         # only works in conjunction with .dataStart_RT_B()

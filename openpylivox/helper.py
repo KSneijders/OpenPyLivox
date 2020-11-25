@@ -1,4 +1,5 @@
 import binascii
+import struct
 
 import crcmod
 
@@ -45,6 +46,52 @@ def crc32from_str(bin_string):
     byte4 = str_hex_check_sum[0:2]
 
     return byte1 + byte2 + byte3 + byte4
+
+
+""" ################################################################
+################################ Int ###############################
+################################################################ """
+
+
+def bytes_to_int(bytes_int, byteorder='little'):
+    return int.from_bytes(bytes_int, byteorder=byteorder)
+
+
+def get_seconds_in_x_years(years):
+    amount_of_leap_days = int(years / 4)
+    seconds_per_day = 60 * 60 * 24
+    # 4 Years of time in seconds
+    return seconds_per_day * (365 * years + amount_of_leap_days)
+
+
+""" ################################################################
+########################### MSG OBJECT #############################
+################################################################ """
+
+
+class Msg:
+    def __init__(self, show_message: bool, sensor_ip=None, format_spaces=None, default_arrow=None):
+        self.show_message = show_message
+        self.sensor_ip = sensor_ip
+        self.format_spaces = format_spaces
+        self.default_arrow = default_arrow
+
+    def print(self, val):
+        if self.show_message:
+            print(val)
+
+    def prefix_print(self, string, f_spaces=1, arrow=None):
+        if not (self.sensor_ip and self.format_spaces):
+            raise ValueError("Prefix print hasn't been initialised yet. Do so in the __init__.")
+        if arrow is None and self.default_arrow is None:
+            raise ValueError("Prefix default_arrow hasn't been defined.")
+        elif arrow is None:
+            arrow = self.default_arrow
+
+        self.print(f"   {self.sensor_ip}{self.format_spaces * f_spaces}   {arrow}     {string}")
+
+    def space_print(self, spaces, string):
+        self.print(f"{' ' * spaces}{string}")
 
 
 """ ################################################################
@@ -141,3 +188,24 @@ def adjust_duration(firmware_type, duration):
             raise ValueError(f"Unknown firmware type: {firmware_type}")
         return duration + (firmware_adjustments.get(firmware_type) * (duration / 2.0))
     return duration
+
+
+def get_timestamp(data_pc, timestamp_type):
+    # nanosecond timestamp
+    if timestamp_type in [0, 1, 4]:
+        timestamp_sec = round(float(struct.unpack('<Q', data_pc[0:8])[0]) / 1000000000.0, 6)  # convert to seconds
+    # UTC timestamp, microseconds past the hour
+    elif timestamp_type == 3:
+        # timestamp_year = bytes_to_int(data_pc[0:1])
+        # timestamp_month = bytes_to_int(data_pc[1:2])
+        # timestamp_day = bytes_to_int(data_pc[2:3])
+        timestamp_hour = bytes_to_int(data_pc[3:4])
+        timestamp_sec = round(float(struct.unpack('<L', data_pc[4:8])[0]) / 1000000.0, 6)  # convert to seconds
+
+        timestamp_sec += timestamp_hour * 3600.  # seconds into the day
+    else:
+        raise ValueError(f"Unknown timestamp type {timestamp_type}")
+
+        # TODO: check and adjust for hour, day, month and year crossovers
+
+    return timestamp_sec
