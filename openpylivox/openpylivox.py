@@ -801,7 +801,7 @@ class OpenPyLivox:
                                                         self._show_messages, self._format_spaces, self._deviceType)
                 time.sleep(0.12)
                 self._waitForIdle()
-                self._cmdSocket.sendto(self._CMD_DATA_START, (self._sensorIP, 65000))
+                self._cmdSocket.sendto(sdkdefs.CMD_DATA_START, (self._sensorIP, 65000))
                 self.msg.print("   " + self._sensorIP + self._format_spaces + "   <--     sent start data stream request")
 
                 # check for proper response from data start request
@@ -834,7 +834,7 @@ class OpenPyLivox:
                                                         self._show_messages, self._format_spaces, self._deviceType)
                 time.sleep(0.12)
                 self._waitForIdle()
-                self._cmdSocket.sendto(self._CMD_DATA_START, (self._sensorIP, 65000))
+                self._cmdSocket.sendto(sdkdefs.CMD_DATA_START, (self._sensorIP, 65000))
                 self.msg.print("   " + self._sensorIP + self._format_spaces + "   <--     sent start data stream request")
 
                 # check for proper response from data start request
@@ -950,7 +950,7 @@ class OpenPyLivox:
                               IP_parts[3].strip()
                 cmdString = "AA011400000000a824000801" + IPhex1 + IPhex2 + IPhex3 + IPhex4
                 binString = bytes(cmdString, encoding='utf-8')
-                crc32checksum = self._crc32fromStr(binString)
+                crc32checksum = helper.crc32from_Str(binString)
                 cmdString += crc32checksum
                 binString = bytes(cmdString, encoding='utf-8')
 
@@ -1087,7 +1087,7 @@ class OpenPyLivox:
 
                 cmdString = "AA012700000000b5ed0101" + h_roll + h_pitch + h_yaw + h_x + h_y + h_z
                 binString = bytes(cmdString, encoding='utf-8')
-                crc32checksum = self._crc32fromStr(binString)
+                crc32checksum = helper.crc32from_Str(binString)
                 cmdString += crc32checksum
                 binString = bytes(cmdString, encoding='utf-8')
                 setExtValues = bytes.fromhex((binString).decode('ascii'))
