@@ -50,9 +50,9 @@ class OpenPyLivox:
         self._isConnected = False
         self._isData = False
         self._isWriting = False
-        self._dataSocket = ""
-        self._cmdSocket = ""
-        self._imuSocket = ""
+        self._dataSocket = None
+        self._cmdSocket = None
+        self._imuSocket = None
         self._heartbeat = None
         self._firmware = "UNKNOWN"
         self._coordSystem = -1
@@ -704,7 +704,7 @@ class OpenPyLivox:
         for i in range(len(self._mid100_sensors)):
             self._mid100_sensors[i]._reboot()
 
-    def send_command(self, command, expected_command_set):
+    def send_command(self, command, expected_command_set, expected_command_id):
         if self._isConnected:
             self._waitForIdle()
             self._cmdSocket.sendto(command, (self._sensorIP, 65000))
@@ -713,8 +713,8 @@ class OpenPyLivox:
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(16)
                 _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
-
-                if ack == "ACK (response)" and cmd_set == expected_command_set and cmd_id == "0":
+                # self.msg.print(ack + " / " + cmd_set + " / " + cmd_id)  # TODO: Comment back in for logging
+                if ack == "ACK (response)" and cmd_set == expected_command_set and cmd_id == str(expected_command_id):
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     return ret_code
                 else:
@@ -724,7 +724,7 @@ class OpenPyLivox:
             return -2
 
     def _lidarSpinUp(self):
-        response = self.send_command(sdkdefs.CMD_LIDAR_START, "Lidar")
+        response = self.send_command(sdkdefs.CMD_LIDAR_START, "Lidar", 0)
         self.msg.print("   " + self._sensorIP + self._format_spaces + "   <--     sent lidar spin up request")
         if response == 1:
             self.msg.print("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to spin up the lidar")
@@ -765,7 +765,7 @@ class OpenPyLivox:
                 break
 
     def _lidarSpinDown(self):
-        response = self.send_command(sdkdefs.CMD_LIDAR_POWERSAVE, "Lidar")
+        response = self.send_command(sdkdefs.CMD_LIDAR_POWERSAVE, "Lidar", 0)
         self.msg.print("   " + self._sensorIP + self._format_spaces + "   <--     sent lidar spin down request")
         if response == 1:
             self.msg.print("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to spin down the lidar")
@@ -780,7 +780,7 @@ class OpenPyLivox:
             self._mid100_sensors[i]._lidarSpinDown()
 
     def _lidarStandBy(self):
-        response = self.send_command(sdkdefs.CMD_LIDAR_START, "Lidar")
+        response = self.send_command(sdkdefs.CMD_LIDAR_START, "Lidar", 0)
         self.msg.print("   " + self._sensorIP + self._format_spaces + "   <--     sent lidar stand-by request")
         if response == 1:
             self.msg.print("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to set lidar to stand-by")
@@ -907,7 +907,7 @@ class OpenPyLivox:
         if not self._isData:
             self.msg.print("   " + self._sensorIP + self._format_spaces + "   -->     data stream already stopped")
             return
-        response = self.send_command(sdkdefs.CMD_DATA_STOP, "General")
+        response = self.send_command(sdkdefs.CMD_DATA_STOP, "General", 4)
         self.msg.print("   " + self._sensorIP + self._format_spaces + "   <--     sent stop data stream request")
         if response == 1:
             self.msg.print("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to stop data stream")
@@ -920,7 +920,7 @@ class OpenPyLivox:
             self._mid100_sensors[i]._dataStop()
 
     def setDynamicIP(self):
-        response = self.send_command(sdkdefs.CMD_DYNAMIC_IP, "General")
+        response = self.send_command(sdkdefs.CMD_DYNAMIC_IP, "General", 8)
         if response == 0:
             self.msg.print("Changed IP from " + self._sensorIP + " to dynamic IP (DHCP assigned)")
             self.disconnect()
@@ -982,7 +982,7 @@ class OpenPyLivox:
             self.msg.print("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def _setCartesianCS(self):
-        response = self.send_command(sdkdefs.CMD_CARTESIAN_CS, "General")
+        response = self.send_command(sdkdefs.CMD_CARTESIAN_CS, "General", 5)
         self.msg.print(
             "   " + self._sensorIP + self._format_spaces + "   <--     sent change to Cartesian coordinates request")
         if response == 0:
@@ -999,7 +999,7 @@ class OpenPyLivox:
             self._mid100_sensors[i]._setCartesianCS()
 
     def _setSphericalCS(self):
-        response = self.send_command(sdkdefs.CMD_SPHERICAL_CS, "General")
+        response = self.send_command(sdkdefs.CMD_SPHERICAL_CS, "General", 5)
         self.msg.print("   " + self._sensorIP + self._format_spaces + "   <--     sent change to Spherical coordinates request")
         if response == 0:
             self._coordSystem = 1
@@ -1052,7 +1052,7 @@ class OpenPyLivox:
             self.msg.print("Not connected to Livox sensor at IP: " + self._sensorIP)
 
     def setExtrinsicToZero(self):
-        response = self.send_command(sdkdefs.CMD_WRITE_ZERO_EO, "Lidar")
+        response = self.send_command(sdkdefs.CMD_WRITE_ZERO_EO, "Lidar", 1)
         self.msg.print("   " + self._sensorIP + self._format_spaces + "   <--     sent set extrinsic parameters to zero request")
         if response == 0:
             self.readExtrinsic()
@@ -1175,10 +1175,10 @@ class OpenPyLivox:
 
     def _setRainFogSuppression(self, OnOff: bool):
         if OnOff:
-            response = self.send_command(sdkdefs.CMD_RAIN_FOG_ON, "Lidar")
+            response = self.send_command(sdkdefs.CMD_RAIN_FOG_ON, "Lidar", 3)
             self.msg.print("   " + self._sensorIP + self._format_spaces + "   <--     sent turn on rain/fog suppression request")
         else:
-            response = self.send_command(sdkdefs.CMD_RAIN_FOG_OFF, "Lidar")
+            response = self.send_command(sdkdefs.CMD_RAIN_FOG_OFF, "Lidar", 3)
             self.msg.print("   " + self._sensorIP + self._format_spaces + "   <--     sent turn off rain/fog suppression request")
 
         if response == 1:
@@ -1193,11 +1193,11 @@ class OpenPyLivox:
 
     def _setFan(self, OnOff):
         if OnOff:
-            response = self.send_command(sdkdefs.CMD_FAN_ON, "Lidar")
+            response = self.send_command(sdkdefs.CMD_FAN_ON, "Lidar", 4)
             self.msg.print(
                 "   " + self._sensorIP + self._format_spaces + "   <--     sent turn on fan request")
         else:
-            response = self.send_command(sdkdefs.CMD_FAN_OFF, "Lidar")
+            response = self.send_command(sdkdefs.CMD_FAN_OFF, "Lidar", 4)
             self.msg.print(
                 "   " + self._sensorIP + self._format_spaces + "   <--     sent turn off fan request")
 
@@ -1245,13 +1245,13 @@ class OpenPyLivox:
 
     def setLidarReturnMode(self, Mode_ID):
         if Mode_ID == 0:
-            response = self.send_command(sdkdefs.CMD_LIDAR_SINGLE_1ST, "Lidar")
+            response = self.send_command(sdkdefs.CMD_LIDAR_SINGLE_1ST, "Lidar", 6)
             self.msg.print("   " + self._sensorIP + self._format_spaces + "   <--     sent single first return lidar mode request")
         elif Mode_ID == 1:
-            response = self.send_command(sdkdefs.CMD_LIDAR_SINGLE_STRONGEST, "Lidar")
+            response = self.send_command(sdkdefs.CMD_LIDAR_SINGLE_STRONGEST, "Lidar", 6)
             self.msg.print("   " + self._sensorIP + self._format_spaces + "   <--     sent single strongest return lidar mode request")
         elif Mode_ID == 2:
-            response = self.send_command(sdkdefs.CMD_LIDAR_DUAL, "Lidar")
+            response = self.send_command(sdkdefs.CMD_LIDAR_DUAL, "Lidar", 6)
             self.msg.print("   " + self._sensorIP + self._format_spaces + "   <--     sent dual return lidar mode request")
         else:
             self.msg.print("   " + self._sensorIP + self._format_spaces + "   <--     Invalid mode_id for setting lidar return mode")
@@ -1264,10 +1264,10 @@ class OpenPyLivox:
 
     def setIMUdataPush(self, OnOff: bool):
         if OnOff:
-            response = self.send_command(sdkdefs.CMD_IMU_DATA_ON, "Lidar")
+            response = self.send_command(sdkdefs.CMD_IMU_DATA_ON, "Lidar", 8)
             self.msg.print("   " + self._sensorIP + self._format_spaces + "   <--     sent start IMU data push request")
         else:
-            response = self.send_command(sdkdefs.CMD_IMU_DATA_OFF, "Lidar")
+            response = self.send_command(sdkdefs.CMD_IMU_DATA_OFF, "Lidar", 8)
             self.msg.print("   " + self._sensorIP + self._format_spaces + "   <--     sent stop IMU data push request")
 
         if response == 1:
