@@ -264,13 +264,58 @@ class OpenPyLivox:
             print(" *** ERROR: cannot bind to specified IP:Port(s), " + err)
             sys.exit(3)
 
+    @staticmethod
+    def turn_values_into_single_hex_string(data_array, type_array):
+        hex_string = ""
+        for index in range(len(data_array)):
+            hex_string += str(binascii.hexlify(struct.pack(type_array[index], data_array[index])))[2:-1]
+        return hex_string
+
+    def send_command_receive_ack(self, command, expected_command_set, expected_command_id):
+        if self._is_connected:
+            self._wait_for_idle()
+            self._cmd_socket.sendto(command, (self._sensor_ip, 65000))
+
+            # check for proper response from lidar start request
+            if select.select([self._cmd_socket], [], [], 0.1)[0]:
+                binData, addr = self._cmd_socket.recvfrom(16)
+                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
+                # self.msg.print(ack + " / " + cmd_set + " / " + cmd_id)  # TODO: Comment back in for logging
+                if ack == "ACK (response)" and cmd_set == expected_command_set and cmd_id == str(expected_command_id):
+                    ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
+                    return ret_code
+                else:
+                    return -1
+        else:
+            self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
+            return -2
+
+    def send_command_receive_data(self, command, expected_command_set, expected_command_id):
+        if self._is_connected:
+            self._wait_for_idle()
+            self._cmd_socket.sendto(command, (self._sensor_ip, 65000))
+
+            # check for proper response from read extrinsics request
+            if select.select([self._cmd_socket], [], [], 0.1)[0]:
+                bin_data, addr = self._cmd_socket.recvfrom(40)
+                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, bin_data)
+
+                if ack == "ACK (response)" and cmd_set == expected_command_set and cmd_id == expected_command_id:
+                    ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
+                    return ret_code, bin_data
+                else:
+                    return -1, None
+        else:
+            self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
+            return -2, None
+
     def _wait_for_idle(self):
 
         while self._heartbeat.idle_state != 9:
             time.sleep(0.1)
 
     def _disconnect_sensor(self):
-        response = self.send_command(sdkdefs.CMD_DISCONNECT, "General", 6)
+        response = self.send_command_receive_ack(sdkdefs.CMD_DISCONNECT, "General", 6)
         # self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent lidar disconnect request")  # TODO: Proper logging
         if response == 1:
             self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to disconnect")
@@ -278,14 +323,13 @@ class OpenPyLivox:
             self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect disconnect response")
 
     def _reboot_sensor(self):
-        response = self.send_command(sdkdefs.CMD_REBOOT, "General", 10)
+        response = self.send_command_receive_ack(sdkdefs.CMD_REBOOT, "General", 10)
         if response == 1:
             self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to reboot")
         elif response == -1:
             self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect reboot response")
 
     def _query(self):
-
         self._wait_for_idle()
         self._cmd_socket.sendto(sdkdefs.CMD_QUERY, (self._sensor_ip, 65000))
 
@@ -681,27 +725,8 @@ class OpenPyLivox:
         for i in range(len(self._mid100_sensors)):
             self._mid100_sensors[i]._reboot()
 
-    def send_command(self, command, expected_command_set, expected_command_id):
-        if self._is_connected:
-            self._wait_for_idle()
-            self._cmd_socket.sendto(command, (self._sensor_ip, 65000))
-
-            # check for proper response from lidar start request
-            if select.select([self._cmd_socket], [], [], 0.1)[0]:
-                binData, addr = self._cmd_socket.recvfrom(16)
-                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
-                # self.msg.print(ack + " / " + cmd_set + " / " + cmd_id)  # TODO: Comment back in for logging
-                if ack == "ACK (response)" and cmd_set == expected_command_set and cmd_id == str(expected_command_id):
-                    ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
-                    return ret_code
-                else:
-                    return -1
-        else:
-            self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
-            return -2
-
     def _lidar_spin_up(self):
-        response = self.send_command(sdkdefs.CMD_LIDAR_START, "Lidar", 0)
+        response = self.send_command_receive_ack(sdkdefs.CMD_LIDAR_START, "Lidar", 0)
         self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent lidar spin up request")
         if response == 1:
             self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to spin up the lidar")
@@ -742,7 +767,7 @@ class OpenPyLivox:
                 break
 
     def _lidar_spin_down(self):
-        response = self.send_command(sdkdefs.CMD_LIDAR_POWERSAVE, "Lidar", 0)
+        response = self.send_command_receive_ack(sdkdefs.CMD_LIDAR_POWERSAVE, "Lidar", 0)
         self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent lidar spin down request")
         if response == 1:
             self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to spin down the lidar")
@@ -757,7 +782,7 @@ class OpenPyLivox:
             self._mid100_sensors[i]._lidar_spin_down()
 
     def _lidar_stand_by(self):
-        response = self.send_command(sdkdefs.CMD_LIDAR_START, "Lidar", 0)
+        response = self.send_command_receive_ack(sdkdefs.CMD_LIDAR_START, "Lidar", 0)
         self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent lidar stand-by request")
         if response == 1:
             self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to set lidar to stand-by")
@@ -884,7 +909,7 @@ class OpenPyLivox:
         if not self._is_data:
             self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     data stream already stopped")
             return
-        response = self.send_command(sdkdefs.CMD_DATA_STOP, "General", 4)
+        response = self.send_command_receive_ack(sdkdefs.CMD_DATA_STOP, "General", 4)
         self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent stop data stream request")
         if response == 1:
             self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to stop data stream")
@@ -897,7 +922,7 @@ class OpenPyLivox:
             self._mid100_sensors[i]._data_stop()
 
     def setDynamicIP(self):
-        response = self.send_command(sdkdefs.CMD_DYNAMIC_IP, "General", 8)
+        response = self.send_command_receive_ack(sdkdefs.CMD_DYNAMIC_IP, "General", 8)
         if response == 0:
             self.msg.print("Changed IP from " + self._sensor_ip + " to dynamic IP (DHCP assigned)")
             self.disconnect()
@@ -959,7 +984,7 @@ class OpenPyLivox:
             self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
 
     def _set_cartesian_cs(self):
-        response = self.send_command(sdkdefs.CMD_CARTESIAN_CS, "General", 5)
+        response = self.send_command_receive_ack(sdkdefs.CMD_CARTESIAN_CS, "General", 5)
         self.msg.print(
             "   " + self._sensor_ip + self._format_spaces + "   <--     sent change to Cartesian coordinates request")
         if response == 0:
@@ -976,7 +1001,7 @@ class OpenPyLivox:
             self._mid100_sensors[i]._set_cartesian_cs()
 
     def _set_spherical_cs(self):
-        response = self.send_command(sdkdefs.CMD_SPHERICAL_CS, "General", 5)
+        response = self.send_command_receive_ack(sdkdefs.CMD_SPHERICAL_CS, "General", 5)
         self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent change to Spherical coordinates request")
         if response == 0:
             self._coord_system = 1
@@ -991,45 +1016,27 @@ class OpenPyLivox:
             self._mid100_sensors[i]._set_spherical_cs()
 
     def readExtrinsic(self):
+        response, data = self.send_command_receive_data(sdkdefs.CMD_READ_EXTRINSIC, "Lidar", 2)
+        self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent read extrinsic parameters request")
+        if response == 0:
+            self._roll = struct.unpack('<f', data[12:16])[0]
+            self._pitch = struct.unpack('<f', data[16:20])[0]
+            self._yaw = struct.unpack('<f', data[20:24])[0]
+            self._x = float(struct.unpack('<i', data[24:28])[0]) / 1000.
+            self._y = float(struct.unpack('<i', data[28:32])[0]) / 1000.
+            self._z = float(struct.unpack('<i', data[32:36])[0]) / 1000.
 
-        if self._is_connected:
-            self._wait_for_idle()
-            self._cmd_socket.sendto(sdkdefs.CMD_READ_EXTRINSIC, (self._sensor_ip, 65000))
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent read extrinsic parameters request")
-
-            # check for proper response from read extrinsics request
-            if select.select([self._cmd_socket], [], [], 0.1)[0]:
-                binData, addr = self._cmd_socket.recvfrom(40)
-                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
-
-                if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "2":
-                    ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
-                    if ret_code == 1:
-                        self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to read extrinsic parameters")
-                    elif ret_code == 0:
-                        roll = struct.unpack('<f', binData[12:16])[0]
-                        pitch = struct.unpack('<f', binData[16:20])[0]
-                        yaw = struct.unpack('<f', binData[20:24])[0]
-                        x = float(struct.unpack('<i', binData[24:28])[0]) / 1000.
-                        y = float(struct.unpack('<i', binData[28:32])[0]) / 1000.
-                        z = float(struct.unpack('<i', binData[32:36])[0]) / 1000.
-
-                        self._x = x
-                        self._y = y
-                        self._z = z
-                        self._roll = roll
-                        self._pitch = pitch
-                        self._yaw = yaw
-
-                        # called only to print the extrinsic parameters to the screen if .showMessages(True)
-                        ack = self.extrinsicParameters()
-                else:
-                    self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect read extrinsics response")
-        else:
+            # called only to print the extrinsic parameters to the screen if .showMessages(True)
+            ack = self.extrinsicParameters()
+        elif response == 1:
+            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to read extrinsic parameters")
+        elif response == -1:
+            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect read extrinsics response")
+        elif response == -2:
             self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
 
     def setExtrinsicToZero(self):
-        response = self.send_command(sdkdefs.CMD_WRITE_ZERO_EO, "Lidar", 1)
+        response = self.send_command_receive_ack(sdkdefs.CMD_WRITE_ZERO_EO, "Lidar", 1)
         self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent set extrinsic parameters to zero request")
         if response == 0:
             self.readExtrinsic()
@@ -1039,35 +1046,15 @@ class OpenPyLivox:
             self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect set extrinsics to zero response")
 
     def setExtrinsicTo(self, x, y, z, roll, pitch, yaw):
-        xi = None
-        yi = None
-        zi = None
-        rollf = None
-        pitchf = None
-        yawf = None
-        if self._is_connected:
-            goodValues = True
-            try:
-                xi = int(np.floor(x * 1000.))  # units of millimeters
-                yi = int(np.floor(y * 1000.))  # units of millimeters
-                zi = int(np.floor(z * 1000.))  # units of millimeters
-                rollf = float(roll)
-                pitchf = float(pitch)
-                yawf = float(yaw)
+        hex_string_to_add_to_cmd_string = self.turn_values_into_single_hex_string([float(roll),
+                                                                                   float(pitch),
+                                                                                   float(yaw),
+                                                                                   int(np.floor(x * 1000.)),
+                                                                                   int(np.floor(y * 1000.)),
+                                                                                   int(np.floor(z * 1000.))],
+                                                                                  ['<f', '<f', '<f', '<i', '<i', '<i'])
 
-            except:
-                goodValues = False
-                self.msg.print("*** Error - one or more of the extrinsic values specified are not of the correct type ***")
-
-            if goodValues:
-                h_x = str(binascii.hexlify(struct.pack('<i', xi)))[2:-1]
-                h_y = str(binascii.hexlify(struct.pack('<i', yi)))[2:-1]
-                h_z = str(binascii.hexlify(struct.pack('<i', zi)))[2:-1]
-                h_roll = str(binascii.hexlify(struct.pack('<f', rollf)))[2:-1]
-                h_pitch = str(binascii.hexlify(struct.pack('<f', pitchf)))[2:-1]
-                h_yaw = str(binascii.hexlify(struct.pack('<f', yawf)))[2:-1]
-
-                cmdString = "AA012700000000b5ed0101" + h_roll + h_pitch + h_yaw + h_x + h_y + h_z
+                cmdString = "AA012700000000b5ed0101" + hex_string_to_add_to_cmd_string
                 binString = bytes(cmdString, encoding='utf-8')
                 crc32checksum = helper.crc32from_str(binString)
                 cmdString += crc32checksum
@@ -1157,10 +1144,10 @@ class OpenPyLivox:
 
     def _set_rain_fog_suppression(self, OnOff: bool):
         if OnOff:
-            response = self.send_command(sdkdefs.CMD_RAIN_FOG_ON, "Lidar", 3)
+            response = self.send_command_receive_ack(sdkdefs.CMD_RAIN_FOG_ON, "Lidar", 3)
             self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent turn on rain/fog suppression request")
         else:
-            response = self.send_command(sdkdefs.CMD_RAIN_FOG_OFF, "Lidar", 3)
+            response = self.send_command_receive_ack(sdkdefs.CMD_RAIN_FOG_OFF, "Lidar", 3)
             self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent turn off rain/fog suppression request")
 
         if response == 1:
@@ -1175,11 +1162,11 @@ class OpenPyLivox:
 
     def _set_fan(self, OnOff):
         if OnOff:
-            response = self.send_command(sdkdefs.CMD_FAN_ON, "Lidar", 4)
+            response = self.send_command_receive_ack(sdkdefs.CMD_FAN_ON, "Lidar", 4)
             self.msg.print(
                 "   " + self._sensor_ip + self._format_spaces + "   <--     sent turn on fan request")
         else:
-            response = self.send_command(sdkdefs.CMD_FAN_OFF, "Lidar", 4)
+            response = self.send_command_receive_ack(sdkdefs.CMD_FAN_OFF, "Lidar", 4)
             self.msg.print(
                 "   " + self._sensor_ip + self._format_spaces + "   <--     sent turn off fan request")
 
@@ -1227,13 +1214,13 @@ class OpenPyLivox:
 
     def setLidarReturnMode(self, Mode_ID):
         if Mode_ID == 0:
-            response = self.send_command(sdkdefs.CMD_LIDAR_SINGLE_1ST, "Lidar", 6)
+            response = self.send_command_receive_ack(sdkdefs.CMD_LIDAR_SINGLE_1ST, "Lidar", 6)
             self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent single first return lidar mode request")
         elif Mode_ID == 1:
-            response = self.send_command(sdkdefs.CMD_LIDAR_SINGLE_STRONGEST, "Lidar", 6)
+            response = self.send_command_receive_ack(sdkdefs.CMD_LIDAR_SINGLE_STRONGEST, "Lidar", 6)
             self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent single strongest return lidar mode request")
         elif Mode_ID == 2:
-            response = self.send_command(sdkdefs.CMD_LIDAR_DUAL, "Lidar", 6)
+            response = self.send_command_receive_ack(sdkdefs.CMD_LIDAR_DUAL, "Lidar", 6)
             self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent dual return lidar mode request")
         else:
             self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     Invalid mode_id for setting lidar return mode")
@@ -1246,10 +1233,10 @@ class OpenPyLivox:
 
     def setIMUdataPush(self, OnOff: bool):
         if OnOff:
-            response = self.send_command(sdkdefs.CMD_IMU_DATA_ON, "Lidar", 8)
+            response = self.send_command_receive_ack(sdkdefs.CMD_IMU_DATA_ON, "Lidar", 8)
             self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent start IMU data push request")
         else:
-            response = self.send_command(sdkdefs.CMD_IMU_DATA_OFF, "Lidar", 8)
+            response = self.send_command_receive_ack(sdkdefs.CMD_IMU_DATA_OFF, "Lidar", 8)
             self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent stop IMU data push request")
 
         if response == 1:
