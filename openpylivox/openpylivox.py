@@ -77,7 +77,7 @@ class OpenPyLivox:
         self._mid100_sensors = []
         self._format_spaces = ""
 
-    def _reinit(self):
+    def _re_init(self):
 
         self._data_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._cmd_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -86,7 +86,7 @@ class OpenPyLivox:
         self._cmd_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._imu_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
-        lidar_sensor_ips, serial_nums, ip_range_codes, sensor_types = self._searchForSensors(False)
+        lidar_sensor_ips, serial_nums, ip_range_codes, sensor_types = self._search_for_sensors(False)
 
         unique_serial_nums = []
         unique_sensors = []
@@ -149,7 +149,7 @@ class OpenPyLivox:
         return unique_serial_nums, unique_sensors, sensor_ips
 
     @staticmethod
-    def _checkIP(input_ip):
+    def _check_ip(input_ip):
 
         clean_ip = ""
         if input_ip:
@@ -168,7 +168,7 @@ class OpenPyLivox:
         return clean_ip
 
     @staticmethod
-    def _checkPort(input_port: int):
+    def _check_port(input_port: int):
 
         port_num = int(input_port)
         if 0 <= port_num <= 65535:
@@ -178,7 +178,7 @@ class OpenPyLivox:
 
         return port_num
 
-    def _searchForSensors(self, opt=False):
+    def _search_for_sensors(self, opt=False):
 
         server_sock_init = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         server_sock_init.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -204,7 +204,7 @@ class OpenPyLivox:
                             goodData, cmdMessage, dataMessage, device_serial, typeMessage, ipRangeCode = self._info(
                                 binData)
                             sensor_types.append(typeMessage)
-                            ips.append(self._checkIP(addr[0]))
+                            ips.append(self._check_ip(addr[0]))
                             serials.append(device_serial)
                             ip_range_codes.append(ipRangeCode)
 
@@ -220,7 +220,7 @@ class OpenPyLivox:
                                 goodData, cmdMessage, dataMessage, device_serial, typeMessage, ipRangeCode = self._info(
                                     binData)
                                 sensor_types.append(typeMessage)
-                                ips.append(self._checkIP(addr[0]))
+                                ips.append(self._check_ip(addr[0]))
                                 serials.append(device_serial)
                                 ip_range_codes.append(ipRangeCode)
 
@@ -237,7 +237,7 @@ class OpenPyLivox:
 
         return ips, serials, ip_range_codes, sensor_types
 
-    def _auto_computerIP(self):
+    def _auto_computer_ip(self):
 
         try:
             hostname = socket.gethostname()
@@ -246,66 +246,47 @@ class OpenPyLivox:
         except:
             self.computerIP = ""
 
-    def _bindPorts(self):
+    def _bind_ports(self):
 
         try:
             self._data_socket.bind((self._computer_ip, self._data_port))
             self._cmd_socket.bind((self._computer_ip, self._cmd_port))
             self._imu_socket.bind((self._computer_ip, self._imu_port))
-            assignedDataPort = self._data_socket.getsockname()[1]
-            assignedCmdPort = self._cmd_socket.getsockname()[1]
-            assignedIMUPort = self._imu_socket.getsockname()[1]
+            assigned_data_port = self._data_socket.getsockname()[1]
+            assigned_cmd_port = self._cmd_socket.getsockname()[1]
+            assigned_imu_port = self._imu_socket.getsockname()[1]
 
             time.sleep(0.1)
 
-            return assignedDataPort, assignedCmdPort, assignedIMUPort
+            return assigned_data_port, assigned_cmd_port, assigned_imu_port
 
         except socket.error as err:
             print(" *** ERROR: cannot bind to specified IP:Port(s), " + err)
             sys.exit(3)
 
-    def _waitForIdle(self):
+    def _wait_for_idle(self):
 
         while self._heartbeat.idle_state != 9:
             time.sleep(0.1)
 
-    def _disconnectSensor(self):
+    def _disconnect_sensor(self):
+        response = self.send_command(sdkdefs.CMD_DISCONNECT, "General", 6)
+        # self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent lidar disconnect request")  # TODO: Proper logging
+        if response == 1:
+            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to disconnect")
+        elif response == -1:
+            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect disconnect response")
 
-        self._waitForIdle()
-        self._cmd_socket.sendto(sdkdefs.CMD_DISCONNECT, (self._sensor_ip, 65000))
-
-        # check for proper response from disconnect request
-        if select.select([self._cmd_socket], [], [], 0.1)[0]:
-            binData, addr = self._cmd_socket.recvfrom(16)
-            _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
-
-            if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "6":
-                ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
-                if ret_code == 1:
-                    self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to disconnect")
-            else:
-                self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect disconnect response")
-
-    def _rebootSensor(self):
-
-        self._waitForIdle()
-        self._cmd_socket.sendto(sdkdefs.CMD_REBOOT, (self._sensor_ip, 65000))
-
-        # check for proper response from reboot request
-        if select.select([self._cmd_socket], [], [], 0.1)[0]:
-            binData, addr = self._cmd_socket.recvfrom(16)
-            _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
-
-            if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "10":
-                ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
-                if ret_code == 1:
-                    self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to reboot")
-            else:
-                self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect reboot response")
+    def _reboot_sensor(self):
+        response = self.send_command(sdkdefs.CMD_REBOOT, "General", 10)
+        if response == 1:
+            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to reboot")
+        elif response == -1:
+            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect reboot response")
 
     def _query(self):
 
-        self._waitForIdle()
+        self._wait_for_idle()
         self._cmd_socket.sendto(sdkdefs.CMD_QUERY, (self._sensor_ip, 65000))
 
         # check for proper response from query request
@@ -362,14 +343,14 @@ class OpenPyLivox:
     def discover(self, manualComputerIP=""):
 
         if not manualComputerIP:
-            self._auto_computerIP()
+            self._auto_computer_ip()
         else:
             self._computer_ip = manualComputerIP
 
         if self._computer_ip:
             print("\nUsing computer IP address: " + self._computer_ip + "\n")
 
-            lidarSensorIPs, serialNums, ipRangeCodes, sensorTypes = self._searchForSensors(False)
+            lidarSensorIPs, serialNums, ipRangeCodes, sensorTypes = self._search_for_sensors(False)
 
             unique_serialNums = []
             unique_sensors = []
@@ -441,17 +422,17 @@ class OpenPyLivox:
 
         if not self._is_connected:
 
-            self._computer_ip = self._checkIP(computerIP)
-            self._sensor_ip = self._checkIP(sensorIP)
-            self._data_port = self._checkPort(dataPort)
-            self._cmd_port = self._checkPort(cmdPort)
-            self._imu_port = self._checkPort(imuPort)
+            self._computer_ip = self._check_ip(computerIP)
+            self._sensor_ip = self._check_ip(sensorIP)
+            self._data_port = self._check_port(dataPort)
+            self._cmd_port = self._check_port(cmdPort)
+            self._imu_port = self._check_port(imuPort)
 
             if self._computer_ip and self._sensor_ip and self._data_port != -1 and self._cmd_port != -1 and self._imu_port != -1:
                 num_spaces = 15 - len(self._sensor_ip)
                 for i in range(num_spaces):
                     self._format_spaces += " "
-                unique_serialNums, unique_sensors, sensor_IPs = self._reinit()
+                unique_serialNums, unique_sensors, sensor_IPs = self._re_init()
                 numFound = len(unique_sensors)
                 time.sleep(0.1)
 
@@ -462,7 +443,7 @@ class OpenPyLivox:
                 if sensor_name_override:
                     self._device_type = sensor_name_override
 
-                self._data_port, self._cmd_port, self._imu_port = self._bindPorts()
+                self._data_port, self._cmd_port, self._imu_port = self._bind_ports()
 
                 IP_parts = self._computer_ip.split(".")
                 IPhex = str(hex(int(IP_parts[0]))).replace('0x', '').zfill(2)
@@ -516,13 +497,13 @@ class OpenPyLivox:
         numFound = 0
 
         if not manualComputerIP:
-            self._auto_computerIP()
+            self._auto_computer_ip()
         else:
             self._computer_ip = manualComputerIP
 
         if self._computer_ip:
 
-            lidarSensorIPs, serialNums, ipRangeCodes, sensorTypes = self._searchForSensors(False)
+            lidarSensorIPs, serialNums, ipRangeCodes, sensorTypes = self._search_for_sensors(False)
 
             unique_serialNums = []
             unique_sensors = []
@@ -650,7 +631,7 @@ class OpenPyLivox:
             self._is_writing = False
 
             try:
-                self._disconnectSensor()
+                self._disconnect_sensor()
                 self._heartbeat.stop()
                 time.sleep(0.2)
                 self._heartbeat = None
@@ -681,7 +662,7 @@ class OpenPyLivox:
             self._is_writing = False
 
             try:
-                self._rebootSensor()
+                self._reboot_sensor()
                 self._heartbeat.stop()
                 time.sleep(0.2)
                 self._heartbeat = None
@@ -702,7 +683,7 @@ class OpenPyLivox:
 
     def send_command(self, command, expected_command_set, expected_command_id):
         if self._is_connected:
-            self._waitForIdle()
+            self._wait_for_idle()
             self._cmd_socket.sendto(command, (self._sensor_ip, 65000))
 
             # check for proper response from lidar start request
@@ -719,7 +700,7 @@ class OpenPyLivox:
             self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
             return -2
 
-    def _lidarSpinUp(self):
+    def _lidar_spin_up(self):
         response = self.send_command(sdkdefs.CMD_LIDAR_START, "Lidar", 0)
         self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent lidar spin up request")
         if response == 1:
@@ -732,9 +713,9 @@ class OpenPyLivox:
             print(response)
 
     def lidarSpinUp(self):
-        self._lidarSpinUp()
+        self._lidar_spin_up()
         for i in range(len(self._mid100_sensors)):
-            self._mid100_sensors[i]._lidarSpinUp()
+            self._mid100_sensors[i]._lidar_spin_up()
 
         while True:
             time.sleep(0.1)
@@ -760,7 +741,7 @@ class OpenPyLivox:
                 time.sleep(0.1)
                 break
 
-    def _lidarSpinDown(self):
+    def _lidar_spin_down(self):
         response = self.send_command(sdkdefs.CMD_LIDAR_POWERSAVE, "Lidar", 0)
         self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent lidar spin down request")
         if response == 1:
@@ -771,11 +752,11 @@ class OpenPyLivox:
             self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect lidar spin down response")
 
     def lidarSpinDown(self):
-        self._lidarSpinDown()
+        self._lidar_spin_down()
         for i in range(len(self._mid100_sensors)):
-            self._mid100_sensors[i]._lidarSpinDown()
+            self._mid100_sensors[i]._lidar_spin_down()
 
-    def _lidarStandBy(self):
+    def _lidar_stand_by(self):
         response = self.send_command(sdkdefs.CMD_LIDAR_START, "Lidar", 0)
         self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent lidar stand-by request")
         if response == 1:
@@ -784,9 +765,9 @@ class OpenPyLivox:
             self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect lidar stand-by response")
 
     def lidarStandBy(self):
-        self._lidarStandBy()
+        self._lidar_stand_by()
         for i in range(len(self._mid100_sensors)):
-            self._mid100_sensors[i]._lidarStandBy()
+            self._mid100_sensors[i]._lidar_stand_by()
 
     @deprecated(version='1.0.1', reason="You should use .dataStart_RT_B() instead")
     def dataStart(self):
@@ -796,7 +777,7 @@ class OpenPyLivox:
                 self._capture_stream = DataCaptureThread(self._sensor_ip, self._data_socket, None, "", 0, 0, 0, 0,
                                                          self._show_messages, self._format_spaces, self._device_type)
                 time.sleep(0.12)
-                self._waitForIdle()
+                self._wait_for_idle()
                 self._cmd_socket.sendto(sdkdefs.CMD_DATA_START, (self._sensor_ip, 65000))
                 self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent start data stream request")
 
@@ -822,14 +803,14 @@ class OpenPyLivox:
         else:
             self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
 
-    def _dataStart_RT(self):
+    def _data_start_rt(self):
 
         if self._is_connected:
             if not self._is_data:
                 self._capture_stream = DataCaptureThread(self._sensor_ip, self._data_socket, None, "", 1, 0, 0, 0,
                                                          self._show_messages, self._format_spaces, self._device_type)
                 time.sleep(0.12)
-                self._waitForIdle()
+                self._wait_for_idle()
                 self._cmd_socket.sendto(sdkdefs.CMD_DATA_START, (self._sensor_ip, 65000))
                 self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent start data stream request")
 
@@ -857,18 +838,18 @@ class OpenPyLivox:
 
     @deprecated(version='1.1.0', reason="You should use .dataStart_RT_B() instead")
     def dataStart_RT(self):
-        self._dataStart_RT()
+        self._data_start_rt()
         for i in range(len(self._mid100_sensors)):
-            self._mid100_sensors[i]._dataStart_RT()
+            self._mid100_sensors[i]._data_start_rt()
 
-    def _dataStart_RT_B(self):
+    def _data_start_rt_b(self):
 
         if self._is_connected:
             if not self._is_data:
                 self._capture_stream = DataCaptureThread(self._sensor_ip, self._data_socket, self._imu_socket, "", 2, 0, 0,
                                                          0, self._show_messages, self._format_spaces, self._device_type)
                 time.sleep(0.12)
-                self._waitForIdle()
+                self._wait_for_idle()
                 self._cmd_socket.sendto(sdkdefs.CMD_DATA_START, (self._sensor_ip, 65000))
                 self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent start data stream request")
 
@@ -895,11 +876,11 @@ class OpenPyLivox:
             self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
 
     def dataStart_RT_B(self):
-        self._dataStart_RT_B()
+        self._data_start_rt_b()
         for i in range(len(self._mid100_sensors)):
-            self._mid100_sensors[i]._dataStart_RT_B()
+            self._mid100_sensors[i]._data_start_rt_b()
 
-    def _dataStop(self):
+    def _data_stop(self):
         if not self._is_data:
             self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     data stream already stopped")
             return
@@ -911,9 +892,9 @@ class OpenPyLivox:
             self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect stop data stream response")
 
     def dataStop(self):
-        self._dataStop()
+        self._data_stop()
         for i in range(len(self._mid100_sensors)):
-            self._mid100_sensors[i]._dataStop()
+            self._mid100_sensors[i]._data_stop()
 
     def setDynamicIP(self):
         response = self.send_command(sdkdefs.CMD_DYNAMIC_IP, "General", 8)
@@ -935,7 +916,7 @@ class OpenPyLivox:
                 ipRange = "192.168.1.81 to .150"
             elif self._ip_range_code == 3:
                 ipRange = "192.168.1.151 to .220"
-            ipAddress = self._checkIP(ipAddress)
+            ipAddress = self._check_ip(ipAddress)
             if ipAddress:
                 IP_parts = ipAddress.split(".")
                 IPhex1 = str(hex(int(IP_parts[0]))).replace('0x', '').zfill(2)
@@ -951,7 +932,7 @@ class OpenPyLivox:
                 binString = bytes(cmdString, encoding='utf-8')
 
                 staticIP_request = bytes.fromhex((binString).decode('ascii'))
-                self._waitForIdle()
+                self._wait_for_idle()
                 self._cmd_socket.sendto(staticIP_request, (self._sensor_ip, 65000))
 
                 # check for proper response from static IP request
@@ -977,7 +958,7 @@ class OpenPyLivox:
         else:
             self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
 
-    def _setCartesianCS(self):
+    def _set_cartesian_cs(self):
         response = self.send_command(sdkdefs.CMD_CARTESIAN_CS, "General", 5)
         self.msg.print(
             "   " + self._sensor_ip + self._format_spaces + "   <--     sent change to Cartesian coordinates request")
@@ -990,11 +971,11 @@ class OpenPyLivox:
             self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect change coordinate system response (Cartesian)")
 
     def setCartesianCS(self):
-        self._setCartesianCS()
+        self._set_cartesian_cs()
         for i in range(len(self._mid100_sensors)):
-            self._mid100_sensors[i]._setCartesianCS()
+            self._mid100_sensors[i]._set_cartesian_cs()
 
-    def _setSphericalCS(self):
+    def _set_spherical_cs(self):
         response = self.send_command(sdkdefs.CMD_SPHERICAL_CS, "General", 5)
         self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent change to Spherical coordinates request")
         if response == 0:
@@ -1005,14 +986,14 @@ class OpenPyLivox:
             self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect change coordinate system response (Spherical)")
 
     def setSphericalCS(self):
-        self._setSphericalCS()
+        self._set_spherical_cs()
         for i in range(len(self._mid100_sensors)):
-            self._mid100_sensors[i]._setSphericalCS()
+            self._mid100_sensors[i]._set_spherical_cs()
 
     def readExtrinsic(self):
 
         if self._is_connected:
-            self._waitForIdle()
+            self._wait_for_idle()
             self._cmd_socket.sendto(sdkdefs.CMD_READ_EXTRINSIC, (self._sensor_ip, 65000))
             self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent read extrinsic parameters request")
 
@@ -1093,7 +1074,7 @@ class OpenPyLivox:
                 binString = bytes(cmdString, encoding='utf-8')
                 setExtValues = bytes.fromhex((binString).decode('ascii'))
 
-                self._waitForIdle()
+                self._wait_for_idle()
                 self._cmd_socket.sendto(setExtValues, (self._sensor_ip, 65000))
                 self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent set extrinsic parameters request")
 
@@ -1113,7 +1094,7 @@ class OpenPyLivox:
         else:
             self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
 
-    def _updateUTC(self, year, month, day, hour, microsec):
+    def _update_utc(self, year, month, day, hour, microsec):
 
         if self._is_connected:
 
@@ -1151,7 +1132,7 @@ class OpenPyLivox:
             binString = bytes(cmdString, encoding='utf-8')
             setUTCValues = bytes.fromhex((binString).decode('ascii'))
 
-            self._waitForIdle()
+            self._wait_for_idle()
             self._cmd_socket.sendto(setUTCValues, (self._sensor_ip, 65000))
             self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent update UTC request")
 
@@ -1170,11 +1151,11 @@ class OpenPyLivox:
             self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
 
     def updateUTC(self, year, month, day, hour, microsec):
-        self._updateUTC(year, month, day, hour, microsec)
+        self._update_utc(year, month, day, hour, microsec)
         for i in range(len(self._mid100_sensors)):
-            self._mid100_sensors[i]._updateUTC(year, month, day, hour, microsec)
+            self._mid100_sensors[i]._update_utc(year, month, day, hour, microsec)
 
-    def _setRainFogSuppression(self, OnOff: bool):
+    def _set_rain_fog_suppression(self, OnOff: bool):
         if OnOff:
             response = self.send_command(sdkdefs.CMD_RAIN_FOG_ON, "Lidar", 3)
             self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent turn on rain/fog suppression request")
@@ -1188,11 +1169,11 @@ class OpenPyLivox:
             self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect set rain/fog suppression response")
 
     def setRainFogSuppression(self, OnOff):
-        self._setRainFogSuppression(OnOff)
+        self._set_rain_fog_suppression(OnOff)
         for i in range(len(self._mid100_sensors)):
-            self._mid100_sensors[i]._setRainFogSuppression(OnOff)
+            self._mid100_sensors[i]._set_rain_fog_suppression(OnOff)
 
-    def _setFan(self, OnOff):
+    def _set_fan(self, OnOff):
         if OnOff:
             response = self.send_command(sdkdefs.CMD_FAN_ON, "Lidar", 4)
             self.msg.print(
@@ -1210,14 +1191,14 @@ class OpenPyLivox:
                 "   " + self._sensor_ip + self._format_spaces + "   -->     incorrect set fan response")
 
     def setFan(self, OnOff):
-        self._setFan(OnOff)
+        self._set_fan(OnOff)
         for i in range(len(self._mid100_sensors)):
-            self._mid100_sensors[i]._setFan(OnOff)
+            self._mid100_sensors[i]._set_fan(OnOff)
 
-    def _getFan(self):
+    def _get_fan(self):
 
         if self._is_connected:
-            self._waitForIdle()
+            self._wait_for_idle()
 
             self._cmd_socket.sendto(sdkdefs.CMD_GET_FAN, (self._sensor_ip, 65000))
             self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent get fan state request")
@@ -1240,9 +1221,9 @@ class OpenPyLivox:
             self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
 
     def getFan(self):
-        self._getFan()
+        self._get_fan()
         for i in range(len(self._mid100_sensors)):
-            self._mid100_sensors[i]._getFan()
+            self._mid100_sensors[i]._get_fan()
 
     def setLidarReturnMode(self, Mode_ID):
         if Mode_ID == 0:
@@ -1279,7 +1260,7 @@ class OpenPyLivox:
     def getIMUdataPush(self):
 
         if self._is_connected:
-            self._waitForIdle()
+            self._wait_for_idle()
 
             self._cmd_socket.sendto(sdkdefs.CMD_GET_IMU, (self._sensor_ip, 65000))
             self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent get IMU push state request")
