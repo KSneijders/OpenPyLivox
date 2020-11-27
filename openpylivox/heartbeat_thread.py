@@ -31,7 +31,7 @@ class HeartbeatThread:
             self.transmit_socket.sendto(self.send_command, (self.ip, self.port))
 
             # check for proper response from heartbeat request
-            if select.select([self.t_socket], [], [], 0.1)[0]:
+            if select.select([self.transmit_socket], [], [], 0.1)[0]:
                 
                 bin_data, addr = self.transmit_socket.recvfrom(22)
                 response = _parse_resp(self._show_messages, bin_data)
