@@ -1054,32 +1054,21 @@ class OpenPyLivox:
                                                                                    int(np.floor(z * 1000.))],
                                                                                   ['<f', '<f', '<f', '<i', '<i', '<i'])
 
-                cmdString = "AA012700000000b5ed0101" + hex_string_to_add_to_cmd_string
-                binString = bytes(cmdString, encoding='utf-8')
-                crc32checksum = helper.crc32from_str(binString)
-                cmdString += crc32checksum
-                binString = bytes(cmdString, encoding='utf-8')
-                setExtValues = bytes.fromhex((binString).decode('ascii'))
+        cmdString = "AA012700000000b5ed0101" + hex_string_to_add_to_cmd_string
+        binString = bytes(cmdString, encoding='utf-8')
+        crc32checksum = helper.crc32from_str(binString)
+        cmdString += crc32checksum
+        binString = bytes(cmdString, encoding='utf-8')
+        setExtValues = bytes.fromhex((binString).decode('ascii'))
 
-                self._wait_for_idle()
-                self._cmd_socket.sendto(setExtValues, (self._sensor_ip, 65000))
-                self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent set extrinsic parameters request")
-
-                # check for proper response from write extrinsics request
-                if select.select([self._cmd_socket], [], [], 0.1)[0]:
-                    binData, addr = self._cmd_socket.recvfrom(16)
-                    _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
-
-                    if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "1":
-                        ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
-                        if ret_code == 1:
-                            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to set extrinsic parameters")
-                        elif ret_code == 0:
-                            self.readExtrinsic()
-                    else:
-                        self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect set extrinsic parameters response")
-        else:
-            self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
+        response = self.send_command_receive_ack(setExtValues, "Lidar", 1)
+        self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent set extrinsic parameters request")
+        if response == 0:
+            self.readExtrinsic()
+        elif response == 1:
+            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to set extrinsic parameters")
+        elif response == -1:
+            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect set extrinsic parameters response")
 
     def _update_utc(self, year, month, day, hour, microsec):
 
