@@ -20,8 +20,8 @@ Description: Python3 demo for controlling a single or multiple Livox sensor(s) u
 import openpylivox as opl
 
 # only used for this demo
-import time
-import sys
+# import time
+# import sys
 
 
 # demo operations for a single Livox Sensor
