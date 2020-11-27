@@ -2,6 +2,7 @@ import select
 import struct
 import threading
 from pathlib import Path
+from multiprocessing import Queue
 
 from openpylivox import helper
 from openpylivox.enums import DataType, FileType, FirmwareType
@@ -11,7 +12,7 @@ from openpylivox.point_cloud_data import PointCloudData
 class DataCaptureThread:
 
     def __init__(self, sensor_ip, data_socket, imu_socket, file_path_and_name, file_type, secs_to_wait, duration,
-                 firmware_type, show_messages, format_spaces, device_type):
+                 firmware_type, show_messages, format_spaces, device_type, output_queue=None):
 
         self.start_time = -1
         self.sensor_ip = sensor_ip
@@ -48,6 +49,7 @@ class DataCaptureThread:
         self.self_heating_status = -1
         self.ptp_status = -1
         self.time_sync_status = -1
+        self.output_queue = output_queue
 
         if duration == 0:
             self.duration = helper.get_seconds_in_x_years(years=4)
@@ -519,6 +521,152 @@ class DataCaptureThread:
 
         if imu_reporting:
             imu_file.close()
+
+    def run_realtime_output_to_queue(self):
+        # used to check if the sensor is a Mid-100
+        device_check = 0
+        try:
+            device_check = int(self._device_type[4:7])
+        except:  # Todo: Add type of exception. To know which, use a non Mid-100 and comment this code
+            pass
+
+        version, _ = self.loop_until_capturing(verify=True)
+
+        # check data packet is as expected (first byte anyways)
+        if version != 5:
+            self.msg.prefix_print("Incorrect lidar packet version")
+            return
+
+        self.loop_until_wait_time_is_over(self.start_time, check_i_socket=True)
+        self.msg.prefix_print("CAPTURING DATA...")
+
+        timestamp_sec = self.start_time
+
+        self.msg.prefix_print(f"sending data to a multiprocessing queue")
+        target_queue = self.output_queue
+
+        num_pts = 0
+        null_pts = 0
+        imu_records = 0
+
+        # main loop that captures the desired point cloud data
+        while self.started:
+            time_since_start = timestamp_sec - self.start_time
+            if time_since_start <= self.duration:
+
+                # read points from data buffer
+                if select.select([self.d_socket], [], [], 0)[0]:
+                    data_pc, addr = self.d_socket.recvfrom(1500)
+
+                    # update lidar status information
+                    self.update_status(data_pc[4:8])
+                    data_type = int.from_bytes(data_pc[9:10], byteorder='little')
+                    timestamp_type = int.from_bytes(data_pc[8:9], byteorder='little')
+                    timestamp_sec = helper.get_timestamp(data_pc[10:18], timestamp_type)
+
+                    byte_pos = 18
+
+                    loops = 100
+                    timestamp_step = 0.00001
+                    if data_type in [2, 3]:  # [Cartesian, Spherical] -> Horizon and Tele-15 sensors (single return)
+                        loops = 96
+                        timestamp_step = 0.000004167
+                    elif data_type in [4, 5]:  # [Cartesian, Spherical] -> Horizon and Tele-15 sensors (dual return)
+                        loops = 48
+                        timestamp_step = 0.000002083
+                    if self.firmware_type == FirmwareType.TRIPLE_RETURN:
+                        timestamp_step = 0.000016666
+
+                    return_num = None
+                    timestamp_sec -= timestamp_step
+                    for i in range(loops):
+                        if self.firmware_type in [FirmwareType.DOUBLE_RETURN, FirmwareType.TRIPLE_RETURN]:
+                            mod_firmware_type = i % self.firmware_type
+                            timestamp_sec += float(not mod_firmware_type) * timestamp_step
+                            return_num = mod_firmware_type + 1
+                        else:
+                            timestamp_sec += timestamp_step
+
+                        if data_type in [DataType.CARTESIAN, 2, 4]:  # 2,4 are Cartesian
+                            coord = struct.unpack('<i', data_pc[byte_pos + 4:byte_pos + 8])[0]
+                        elif data_type in [DataType.SPHERICAL, 3, 5]:  # 3, 5 are Spherical
+                            coord = struct.unpack('<I', data_pc[byte_pos:byte_pos + 4])[0]
+                        else:
+                            raise ValueError("Unknown datatype.")
+
+                        # Only check for `device == 100` in specific scenario
+                        check_for_device_type = (
+                                self.firmware_type == FirmwareType.SINGLE_RETURN and
+                                data_type == DataType.CARTESIAN
+                        )
+
+                        if data_type == DataType.CARTESIAN:
+                            jump_bytes = 13
+                        elif data_type == DataType.SPHERICAL:
+                            jump_bytes = 9
+                        elif data_type == 2:  # Cartesian -> Horizon and Tele-15 sensors (single return)
+                            jump_bytes = 14
+                        elif data_type == 3:  # Spherical -> Horizon and Tele-15 sensors (single return)
+                            jump_bytes = 10
+                        elif data_type == 4:  # Cartesian -> Horizon and Tele-15 sensors (dual return)
+                            jump_bytes = 28
+                        elif data_type == 5:  # Spherical -> Horizon and Tele-15 sensors (dual return)
+                            jump_bytes = 16
+                        else:
+                            raise ValueError("Unknown datatype.")
+
+                        if (check_for_device_type and device_check == 100) or coord:
+                            num_pts += 1
+                            bin_file.write(data_pc[byte_pos:byte_pos + jump_bytes])
+                            bin_file.write(struct.pack('<d', timestamp_sec))
+                            if self.firmware_type in [FirmwareType.DOUBLE_RETURN, FirmwareType.TRIPLE_RETURN]:
+                                bin_file.write(str.encode(str(return_num)))
+                        else:
+                            null_pts += 1
+                        byte_pos += jump_bytes
+
+                # IMU data capture
+                if select.select([self.i_socket], [], [], 0)[0]:
+                    imu_data, addr2 = self.i_socket.recvfrom(50)
+
+                    data_type = helper.bytes_to_int(imu_data[9:10])
+                    timestamp_type = helper.bytes_to_int(imu_data[8:9])
+                    timestamp_sec = helper.get_timestamp(imu_data[10:18], timestamp_type)
+
+                    byte_pos = 18
+
+                    # Horizon and Tele-15 IMU data packet
+                    if data_type == 6:
+                        if not imu_reporting:
+                            imu_reporting = True
+                            path_file = Path(self.file_path_and_name)
+                            filename = path_file.stem
+                            extension = path_file.suffix
+                            imu_file = open(filename + "_IMU" + extension, "wb")
+                            imu_file.write(str.encode("OPENPYLIVOX_IMU"))
+
+                        imu_file.write(imu_data[byte_pos:byte_pos + 24])
+                        imu_file.write(struct.pack('<d', timestamp_sec))
+                        imu_records += 1
+            else:  # duration check (exit point)
+                self.started = False
+                self.is_capturing = False
+                break
+
+        self.num_pts = num_pts
+        self.null_pts = null_pts
+        self.imu_records = imu_records
+
+        self.msg.prefix_print(f"closed BINARY file: {self.file_path_and_name}")
+        self.msg.space_print(32, f"(points: {num_pts} good, {null_pts} null, {num_pts + null_pts} total)")
+        if self._device_type == "Horizon" or self._device_type == "Tele-15":
+            self.msg.space_print(32, f"(IMU records: {imu_records})")
+
+        bin_file.close()
+
+        if imu_reporting:
+            imu_file.close()
+
 
     def loop_until_capturing(self, verify=True):
         """
