@@ -282,10 +282,10 @@ class OpenPyLivox:
         # check for proper response from disconnect request
         if select.select([self._cmdSocket], [], [], 0.1)[0]:
             binData, addr = self._cmdSocket.recvfrom(16)
-            response = _parse_resp(self._show_messages, binData)
+            parsedResponse = _parse_resp(self._show_messages, binData)
 
-            if response.cmd_message == "ACK (response)" and response.data_message == "General" and response.data_id == "6":
-                ret_code = int.from_bytes(response.data[0], byteorder='little')
+            if parsedResponse.cmd_message == "ACK (response)" and parsedResponse.data_message == "General" and parsedResponse.data_id == "6":
+                ret_code = int.from_bytes(parsedResponse.data[0], byteorder='little')
                 if ret_code == 1:
                     self.msg.print("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to disconnect")
             else:
@@ -299,10 +299,10 @@ class OpenPyLivox:
         # check for proper response from reboot request
         if select.select([self._cmdSocket], [], [], 0.1)[0]:
             binData, addr = self._cmdSocket.recvfrom(16)
-            response = _parse_resp(self._show_messages, binData)
+            parsedResponse = _parse_resp(self._show_messages, binData)
 
-            if response.cmd_message == "ACK (response)" and response.data_message == "General" and response.data_id == "10":
-                ret_code = int.from_bytes(response.data[0], byteorder='little')
+            if parsedResponse.cmd_message == "ACK (response)" and parsedResponse.data_message == "General" and parsedResponse.data_id == "10":
+                ret_code = int.from_bytes(parsedResponse.data[0], byteorder='little')
                 if ret_code == 1:
                     self.msg.print("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to reboot")
             else:
@@ -317,17 +317,17 @@ class OpenPyLivox:
         if select.select([self._cmdSocket], [], [], 0.1)[0]:
 
             binData, addr = self._cmdSocket.recvfrom(20)
-            response = _parse_resp(self._show_messages, binData)
+            parsedResponse = _parse_resp(self._show_messages, binData)
 
-            if response.cmd_message == "ACK (response)" and response.data_message == "General" and response.data_id == "2":
-                ret_code = int.from_bytes(response.data[0], byteorder='little')
+            if parsedResponse.cmd_message == "ACK (response)" and parsedResponse.data_message == "General" and parsedResponse.data_id == "2":
+                ret_code = int.from_bytes(parsedResponse.data[0], byteorder='little')
                 if ret_code == 1:
                     self.msg.print("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to receive query results")
                 elif ret_code == 0:
-                    AA = str(int.from_bytes(response.data[1], byteorder='little')).zfill(2)
-                    BB = str(int.from_bytes(response.data[2], byteorder='little')).zfill(2)
-                    CC = str(int.from_bytes(response.data[3], byteorder='little')).zfill(2)
-                    DD = str(int.from_bytes(response.data[4], byteorder='little')).zfill(2)
+                    AA = str(int.from_bytes(parsedResponse.data[1], byteorder='little')).zfill(2)
+                    BB = str(int.from_bytes(parsedResponse.data[2], byteorder='little')).zfill(2)
+                    CC = str(int.from_bytes(parsedResponse.data[3], byteorder='little')).zfill(2)
+                    DD = str(int.from_bytes(parsedResponse.data[4], byteorder='little')).zfill(2)
                     self._firmware = AA + "." + BB + "." + CC + DD
             else:
                 self.msg.print("   " + self._sensorIP + self._format_spaces + "   -->     incorrect query response")
@@ -335,20 +335,20 @@ class OpenPyLivox:
     def _info(self, binData):
 
         #data_is_valid, cmd_message, data_message, data_id, data
-        response = _parse_resp(self._show_messages, binData)
+        parsedResponse = _parse_resp(self._show_messages, binData)
 
         device_serial, typeMessage = "", ""
 
-        if response.data_is_valid:
+        if parsedResponse.data_is_valid:
             # received broadcast message
-            if response.cmd_message == "MSG (message)" and response.data_message == "General" and response.data_id == "0":
+            if parsedResponse.cmd_message == "MSG (message)" and parsedResponse.data_message == "General" and parsedResponse.data_id == "0":
                 device_broadcast_code = ""
                 for i in range(0, 16):
-                    device_broadcast_code += response.data[i].decode('ascii')
+                    device_broadcast_code += parsedResponse.data[i].decode('ascii')
 
                 ipRangeCode = int(device_broadcast_code[14:15])  # used to define L,M,R sensors in the Mid-100
                 device_serial = device_broadcast_code[:-2]
-                device_type = int.from_bytes(response.data[i + 1], byteorder='little')
+                device_type = int.from_bytes(parsedResponse.data[i + 1], byteorder='little')
 
                 typeMessage = ""
                 if device_type == 0:
@@ -362,7 +362,7 @@ class OpenPyLivox:
                 else:
                     typeMessage = "UNKNOWN"
 
-        return response.data_is_valid, response.cmd_message, response.data_message, device_serial, typeMessage, ipRangeCode
+        return parsedResponse.data_is_valid, parsedResponse.cmd_message, parsedResponse.data_message, device_serial, typeMessage, ipRangeCode
 
     def discover(self, manualComputerIP=""):
 
@@ -492,10 +492,10 @@ class OpenPyLivox:
                 # check for proper response from connection request
                 if select.select([self._cmdSocket], [], [], 0.1)[0]:
                     binData, addr = self._cmdSocket.recvfrom(16)
-                    response = _parse_resp(self._show_messages, binData)
+                    parsedResponse = _parse_resp(self._show_messages, binData)
 
-                    if response.cmd_message == "ACK (response)" and response.data_message == "General" and response.data_id == "1":
-                        ret_code = int.from_bytes(response.data[0], byteorder='little')
+                    if parsedResponse.cmd_message == "ACK (response)" and parsedResponse.data_message == "General" and parsedResponse.data_id == "1":
+                        ret_code = int.from_bytes(parsedResponse.data[0], byteorder='little')
                         if ret_code == 0:
                             self._isConnected = True
                             self._heartbeat = HeartbeatThread(0.1, self._cmdSocket, self._sensorIP, 65000,
@@ -713,10 +713,10 @@ class OpenPyLivox:
             # check for proper response from lidar start request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(16)
-                response = _parse_resp(self._show_messages, binData)
+                parsedResponse = _parse_resp(self._show_messages, binData)
 
-                if response.cmd_message == "ACK (response)" and response.data_message == expected_command_set and response.data_id == "0":
-                    ret_code = int.from_bytes(response.data[0], byteorder='little')
+                if parsedResponse.cmd_message == "ACK (response)" and parsedResponse.data_message == expected_command_set and parsedResponse.data_id == "0":
+                    ret_code = int.from_bytes(parsedResponse.data[0], byteorder='little')
                     return ret_code
                 else:
                     return -1
@@ -808,10 +808,10 @@ class OpenPyLivox:
                 # check for proper response from data start request
                 if select.select([self._cmdSocket], [], [], 0.1)[0]:
                     binData, addr = self._cmdSocket.recvfrom(16)
-                    response = _parse_resp(self._show_messages, binData)
+                    parsedResponse = _parse_resp(self._show_messages, binData)
 
-                    if response.cmd_message == "ACK (response)" and response.data_message == "General" and response.data_id == "4":
-                        ret_code = int.from_bytes(response.data[0], byteorder='little')
+                    if parsedResponse.cmd_message == "ACK (response)" and parsedResponse.data_message == "General" and parsedResponse.data_id == "4":
+                        ret_code = int.from_bytes(parsedResponse.data[0], byteorder='little')
                         if ret_code == 1:
                             self.msg.print("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to start data stream")
                             if self._captureStream is not None:
@@ -841,10 +841,10 @@ class OpenPyLivox:
                 # check for proper response from data start request
                 if select.select([self._cmdSocket], [], [], 0.1)[0]:
                     binData, addr = self._cmdSocket.recvfrom(16)
-                    response = _parse_resp(self._show_messages, binData)
+                    parsedResponse = _parse_resp(self._show_messages, binData)
 
-                    if response.cmd_message == "ACK (response)" and response.data_message == "General" and response.data_id == "4":
-                        ret_code = int.from_bytes(response.data[0], byteorder='little')
+                    if parsedResponse.cmd_message == "ACK (response)" and parsedResponse.data_message == "General" and parsedResponse.data_id == "4":
+                        ret_code = int.from_bytes(parsedResponse.data[0], byteorder='little')
                         if ret_code == 1:
                             self.msg.print("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to start data stream")
                             if self._captureStream is not None:
@@ -880,10 +880,10 @@ class OpenPyLivox:
                 # check for proper response from data start request
                 if select.select([self._cmdSocket], [], [], 0.1)[0]:
                     binData, addr = self._cmdSocket.recvfrom(16)
-                    response = _parse_resp(self._show_messages, binData)
+                    parsedResponse = _parse_resp(self._show_messages, binData)
 
-                    if response.cmd_message == "ACK (response)" and response.data_message == "General" and response.data_id == "4":
-                        ret_code = int.from_bytes(response.data[0], byteorder='little')
+                    if parsedResponse.cmd_message == "ACK (response)" and parsedResponse.data_message == "General" and parsedResponse.data_id == "4":
+                        ret_code = int.from_bytes(parsedResponse.data[0], byteorder='little')
                         if ret_code == 1:
                             self.msg.print("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to start data stream")
                             if self._captureStream is not None:
@@ -962,10 +962,10 @@ class OpenPyLivox:
                 # check for proper response from static IP request
                 if select.select([self._cmdSocket], [], [], 0.1)[0]:
                     binData, addr = self._cmdSocket.recvfrom(16)
-                    response = _parse_resp(self._show_messages, binData)
+                    parsedResponse = _parse_resp(self._show_messages, binData)
 
-                    if response.cmd_message == "ACK (response)" and response.data_message == "General" and response.data_id == "8":
-                        ret_code = int.from_bytes(response.data[0], byteorder='little')
+                    if parsedResponse.cmd_message == "ACK (response)" and parsedResponse.data_message == "General" and parsedResponse.data_id == "8":
+                        ret_code = int.from_bytes(parsedResponse.data[0], byteorder='little')
 
                         if ret_code == 0:
                             self.msg.print("Changed IP from " + self._sensorIP + " to a static IP of " + formattedIP)
@@ -1024,10 +1024,10 @@ class OpenPyLivox:
             # check for proper response from read extrinsics request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(40)
-                respones = _parse_resp(self._show_messages, binData)
+                parsedResponse = _parse_resp(self._show_messages, binData)
 
-                if response.cmd_message == "ACK (response)" and response.data_message == "Lidar" and response.data_id == "2":
-                    ret_code = int.from_bytes(response.data[0], byteorder='little')
+                if parsedResponse.cmd_message == "ACK (response)" and parsedResponse.data_message == "Lidar" and parsedResponse.data_id == "2":
+                    ret_code = int.from_bytes(parsedResponse.data[0], byteorder='little')
                     if ret_code == 1:
                         self.msg.print("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to read extrinsic parameters")
                     elif ret_code == 0:
@@ -1100,10 +1100,10 @@ class OpenPyLivox:
                 # check for proper response from write extrinsics request
                 if select.select([self._cmdSocket], [], [], 0.1)[0]:
                     binData, addr = self._cmdSocket.recvfrom(16)
-                    response = _parse_resp(self._show_messages, binData)
+                    parsedResponse = _parse_resp(self._show_messages, binData)
 
-                    if response.cmd_message == "ACK (response)" and response.data_message == "Lidar" and response.data_id == "1":
-                        ret_code = int.from_bytes(response.data[0], byteorder='little')
+                    if parsedResponse.cmd_message == "ACK (response)" and parsedResponse.data_message == "Lidar" and parsedResponse.data_id == "1":
+                        ret_code = int.from_bytes(parsedResponse.data[0], byteorder='little')
                         if ret_code == 1:
                             self.msg.print("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to set extrinsic parameters")
                         elif ret_code == 0:
@@ -1158,10 +1158,10 @@ class OpenPyLivox:
             # check for proper response from update UTC request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(16)
-                response = _parse_resp(self._show_messages, binData)
+                parsedResponse = _parse_resp(self._show_messages, binData)
 
-                if response.cmd_message == "ACK (response)" and response.data_message == "Lidar" and response.data_id == "10":
-                    ret_code = int.from_bytes(response.data[0], byteorder='little')
+                if parsedResponse.cmd_message == "ACK (response)" and parsedResponse.data_message == "Lidar" and parsedResponse.data_id == "10":
+                    ret_code = int.from_bytes(parsedResponse.data[0], byteorder='little')
                     if ret_code == 1:
                         self.msg.print("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to update UTC values")
                 else:
@@ -1225,10 +1225,10 @@ class OpenPyLivox:
             # check for proper response from get fan request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(17)
-                response = _parse_resp(self._show_messages, binData)
+                parsedResponse = _parse_resp(self._show_messages, binData)
 
-                if response.cmd_message == "ACK (response)" and response.data_message == "Lidar" and response.data_id == "5":
-                    ret_code = int.from_bytes(response.data[0], byteorder='little')
+                if parsedResponse.cmd_message == "ACK (response)" and parsedResponse.data_message == "Lidar" and parsedResponse.data_id == "5":
+                    ret_code = int.from_bytes(parsedResponse.data[0], byteorder='little')
                     if ret_code == 1:
                         self.msg.print("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to get fan state value")
                     elif ret_code == 0:
@@ -1287,10 +1287,10 @@ class OpenPyLivox:
             # check for proper response from get IMU request
             if select.select([self._cmdSocket], [], [], 0.1)[0]:
                 binData, addr = self._cmdSocket.recvfrom(17)
-                response = _parse_resp(self._show_messages, binData)
+                parsedResponse = _parse_resp(self._show_messages, binData)
 
-                if response.cmd_message == "ACK (response)" and response.data_message == "Lidar" and response.data_id == "9":
-                    ret_code = int.from_bytes(response.data[0], byteorder='little')
+                if parsedResponse.cmd_message == "ACK (response)" and parsedResponse.data_message == "Lidar" and parsedResponse.data_id == "9":
+                    ret_code = int.from_bytes(parsedResponse.data[0], byteorder='little')
                     if ret_code == 1:
                         self.msg.print("   " + self._sensorIP + self._format_spaces + "   -->     FAILED to get IMU push state value")
                     elif ret_code == 0:
