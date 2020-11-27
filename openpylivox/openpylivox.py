@@ -724,6 +724,25 @@ class OpenPyLivox:
             self.msg.print("Not connected to Livox sensor at IP: " + self._sensorIP)
             return -2
 
+    def send_command_receive_data(self, command, expected_command_set, expected_command_id):
+        if self._is_connected:
+            self._wait_for_idle()
+            self._cmd_socket.sendto(command, (self._sensor_ip, 65000))
+
+            # check for proper response from read extrinsics request
+            if select.select([self._cmd_socket], [], [], 0.1)[0]:
+                bin_data, addr = self._cmd_socket.recvfrom(40)
+                parsedResponse = _parse_resp(self._show_messages, bin_data)
+
+                if parsedResponse.cmd_message == "ACK (response)" and parsedResponse.data_message == expected_command_set and parsedResponse.data_id == expected_command_id:
+                    ret_code = int.from_bytes(parsedResponse.data[0], byteorder='little')
+                    return ret_code, bin_data
+                else:
+                    return -1, None
+        else:
+            self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
+            return -2, None
+
     def _lidarSpinUp(self):
         response = self.send_command(sdkdefs.CMD_LIDAR_START, "Lidar")
         self.msg.print("   " + self._sensorIP + self._format_spaces + "   <--     sent lidar spin up request")
