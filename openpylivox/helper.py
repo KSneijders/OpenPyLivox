@@ -3,6 +3,8 @@ import struct
 
 import crcmod
 
+from openpylivox.enums import FirmwareType
+
 """ ################################################################
 ################################ CRC ###############################
 ################################################################ """
@@ -80,15 +82,18 @@ class Msg:
         if self.show_message:
             print(val)
 
-    def prefix_print(self, string, f_spaces=1, arrow=None):
-        if not (self.sensor_ip and self.format_spaces):
-            raise ValueError("Prefix print hasn't been initialised yet. Do so in the __init__.")
+    def get_prefix(self, f_spaces=1, arrow=None):
         if arrow is None and self.default_arrow is None:
             raise ValueError("Prefix default_arrow hasn't been defined.")
         elif arrow is None:
             arrow = self.default_arrow
+        return f"   {self.sensor_ip}{self.format_spaces * f_spaces}   {arrow}"
 
-        self.print(f"   {self.sensor_ip}{self.format_spaces * f_spaces}   {arrow}     {string}")
+    def prefix_print(self, string, f_spaces=1, arrow=None):
+        if not (self.sensor_ip and self.format_spaces):
+            raise ValueError("Prefix print hasn't been initialised yet. Do so in the __init__.")
+
+        self.print(f"{self.get_prefix(f_spaces, arrow)}     {string}")
 
     def space_print(self, spaces, string):
         self.print(f"{' ' * spaces}{string}")
@@ -178,9 +183,9 @@ def _parse_resp(show_message, bin_data):
 
 def adjust_duration(firmware_type, duration):
     firmware_adjustments = {
-        1: 0.001,
-        2: 0.0005,
-        3: 0.00055,
+        FirmwareType.SINGLE_RETURN: 0.001,
+        FirmwareType.DOUBLE_RETURN: 0.0005,
+        FirmwareType.TRIPLE_RETURN: 0.00055,
     }
     # duration adjustment (trying to get exactly 100,000 points / sec)
     if duration != 126230400:

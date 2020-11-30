@@ -4,6 +4,7 @@ import threading
 import time
 
 # from openpylivox.openpylivox import OpenPyLivox
+from openpylivox import helper
 from openpylivox.helper import _parse_resp
 
 
@@ -19,6 +20,13 @@ class HeartbeatThread:
         self.work_state = -1
         self.idle_state = 0
         self._show_messages = show_messages
+
+        self.msg = helper.Msg(
+            show_message=show_messages,
+            sensor_ip=send_to_ip,
+            format_spaces=format_spaces,
+            default_arrow="-->"
+        )
         self._format_spaces = format_spaces
 
         self.thread = threading.Thread(target=self.run, args=())
@@ -26,7 +34,6 @@ class HeartbeatThread:
         self.thread.start()
 
     def run(self):
-        error_prefix = f"   {self.ip}{self._format_spaces * 2}   -->     "
         while True:
             if self.started:
                 self.t_socket.sendto(self.t_command, (self.ip, self.port))
@@ -39,8 +46,7 @@ class HeartbeatThread:
                     if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "3":
                         ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                         if ret_code != 0:
-                            if self._show_messages:
-                                print(f"{error_prefix}incorrect heartbeat response")
+                            self.msg.prefix_print("incorrect heartbeat response", f_spaces=2)
                         else:
                             self.work_state = int.from_bytes(ret_code_bin[1], byteorder='little')
 
@@ -48,12 +54,15 @@ class HeartbeatThread:
                             #  being read from data stream)
 
                             if self.work_state == 4:
-                                raise RuntimeError(f"{error_prefix}*** ERROR: HEARTBEAT ERROR MESSAGE RECEIVED ***")
+                                raise RuntimeError(
+                                    f"{self.msg.get_prefix()}*** ERROR: HEARTBEAT ERROR MESSAGE RECEIVED ***"
+                                )
                     elif ack == "MSG (message)" and cmd_set == "General" and cmd_id == "7":
-                        raise RuntimeError(f"{error_prefix}*** ERROR: ABNORMAL STATUS MESSAGE RECEIVED ***")
+                        raise RuntimeError(
+                            f"{self.msg.get_prefix()}*** ERROR: ABNORMAL STATUS MESSAGE RECEIVED ***"
+                        )
                     else:
-                        if self._show_messages:
-                            print(f"{error_prefix}incorrect heartbeat response")
+                        self.msg.prefix_print("incorrect heartbeat response")
 
                 for i in range(9, -1, -1):
                     self.idle_state = i
