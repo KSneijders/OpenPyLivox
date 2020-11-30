@@ -3,6 +3,8 @@ import struct
 
 import crcmod
 
+from openpylivox.enums import FirmwareType
+
 """ ################################################################
 ################################ CRC ###############################
 ################################################################ """
@@ -181,9 +183,9 @@ def _parse_resp(show_message, bin_data):
 
 def adjust_duration(firmware_type, duration):
     firmware_adjustments = {
-        1: 0.001,
-        2: 0.0005,
-        3: 0.00055,
+        FirmwareType.SINGLE_RETURN: 0.001,
+        FirmwareType.DOUBLE_RETURN: 0.0005,
+        FirmwareType.TRIPLE_RETURN: 0.00055,
     }
     # duration adjustment (trying to get exactly 100,000 points / sec)
     if duration != 126230400:
