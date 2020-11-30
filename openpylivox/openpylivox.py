@@ -72,7 +72,10 @@ class OpenPyLivox:
         self._cmd_port = -1
         self._imu_port = -1
         self._init_show_messages = show_messages
-        self.msg = helper.Msg(show_message=show_messages)
+        self.msg = helper.Msg(
+            show_message=show_messages,
+            default_arrow="-->"
+        )
         self._device_type = "UNKNOWN"
         self._mid100_sensors = []
         self._format_spaces = ""
@@ -320,7 +323,7 @@ class OpenPyLivox:
         # self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent lidar disconnect request")
         # TODO: Put into logging
         if response == 1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to disconnect")
+            self.msg.prefix_print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to disconnect")
         elif response == -1:
             self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect disconnect response")
 
@@ -471,6 +474,7 @@ class OpenPyLivox:
                 num_spaces = 15 - len(self._sensor_ip)
                 for i in range(num_spaces):
                     self._format_spaces += " "
+                self.msg.format_spaces = self._format_spaces
                 unique_serial_nums, unique_sensors, sensor_ips = self._re_init()
                 num_found = len(unique_sensors)
                 time.sleep(0.1)
@@ -511,6 +515,8 @@ class OpenPyLivox:
                                                       self._format_spaces)
                     time.sleep(0.15)
                     self._query()
+                    self.msg.sensor_ip = self._sensor_ip
+
                     self.msg.print("Connected to the Livox " + self._device_type + " at IP: " +
                                    self._sensor_ip + " (ID: " + str(self._ip_range_code) + ")")
                 else:
@@ -981,16 +987,13 @@ class OpenPyLivox:
 
     def _set_spherical_cs(self):
         response = self.send_command_receive_ack(SDK_defs.CMD_SPHERICAL_CS, "General", 5)
-        self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                       "   <--     sent change to Spherical coordinates request")
+        self.msg.prefix_print("sent change to Spherical coordinates request", arrow="<--")
         if response == 0:
             self._coord_system = 1
         elif response == 1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                           "   -->     FAILED to set Spherical coordinate output")
+            self.msg.prefix_print("FAILED to set Spherical coordinate output")
         elif response == -1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                           "   -->     incorrect change coordinate system response (Spherical)")
+            self.msg.prefix_print("incorrect change coordinate system response (Spherical)")
 
     def setSphericalCS(self):
         self._set_spherical_cs()
@@ -999,8 +1002,7 @@ class OpenPyLivox:
 
     def readExtrinsic(self):
         response, data = self.send_command_receive_data(SDK_defs.CMD_READ_EXTRINSIC, "Lidar", 2, 40)
-        self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                       "   <--     sent read extrinsic parameters request")
+        self.msg.prefix_print("sent read extrinsic parameters request", arrow="<--")
         if response == 0:
             self._roll = struct.unpack('<f', data[12:16])[0]
             self._pitch = struct.unpack('<f', data[16:20])[0]
@@ -1012,26 +1014,21 @@ class OpenPyLivox:
             # called only to print the extrinsic parameters to the screen if .showMessages(True)
             ack = self.extrinsicParameters()
         elif response == 1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                           "   -->     FAILED to read extrinsic parameters")
+            self.msg.prefix_print("FAILED to read extrinsic parameters")
         elif response == -1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                           "   -->     incorrect read extrinsics response")
+            self.msg.prefix_print("incorrect read extrinsics response")
         elif response == -2:
             self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
 
     def setExtrinsicToZero(self):
         response = self.send_command_receive_ack(SDK_defs.CMD_WRITE_ZERO_EO, "Lidar", 1)
-        self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                       "   <--     sent set extrinsic parameters to zero request")
+        self.msg.prefix_print("sent set extrinsic parameters to zero request", arrow="<--")
         if response == 0:
             self.readExtrinsic()
         elif response == 1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                           "   -->     FAILED to set extrinsic parameters to zero")
+            self.msg.prefix_print("FAILED to set extrinsic parameters to zero")
         elif response == -1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                           "   -->     incorrect set extrinsics to zero response")
+            self.msg.prefix_print("incorrect set extrinsics to zero response")
 
     def setExtrinsicTo(self, x, y, z, roll, pitch, yaw):
         hex_string_to_add_to_cmd_string = self.turn_values_into_single_hex_string([float(roll),
@@ -1050,16 +1047,13 @@ class OpenPyLivox:
         set_ext_values = bytes.fromhex((bin_string).decode('ascii'))
 
         response = self.send_command_receive_ack(set_ext_values, "Lidar", 1)
-        self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                       "   <--     sent set extrinsic parameters request")
+        self.msg.prefix_print("sent set extrinsic parameters request", arrow="<--")
         if response == 0:
             self.readExtrinsic()
         elif response == 1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                           "   -->     FAILED to set extrinsic parameters")
+            self.msg.prefix_print("FAILED to set extrinsic parameters")
         elif response == -1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                           "   -->     incorrect set extrinsic parameters response")
+            self.msg.prefix_print("incorrect set extrinsic parameters response")
 
     def _update_utc(self, year, month, day, hour, micro_sec):
 
@@ -1101,7 +1095,7 @@ class OpenPyLivox:
 
             self._wait_for_idle()
             self._cmd_socket.sendto(set_utc_values, (self._sensor_ip, 65000))
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent update UTC request")
+            self.msg.prefix_print("sent update UTC request", arrow="<--")
 
             # check for proper response from update UTC request
             if select.select([self._cmd_socket], [], [], 0.1)[0]:
@@ -1111,11 +1105,9 @@ class OpenPyLivox:
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "10":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     if ret_code == 1:
-                        self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                                       "   -->     FAILED to update UTC values")
+                        self.msg.prefix_print("FAILED to update UTC values")
                 else:
-                    self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                                   "   -->     incorrect update UTC values response")
+                    self.msg.prefix_print("incorrect update UTC values response")
         else:
             self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
 
@@ -1127,19 +1119,15 @@ class OpenPyLivox:
     def _set_rain_fog_suppression(self, on_off: bool):
         if on_off:
             response = self.send_command_receive_ack(SDK_defs.CMD_RAIN_FOG_ON, "Lidar", 3)
-            self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                           "   <--     sent turn on rain/fog suppression request")
+            self.msg.prefix_print("sent turn on rain/fog suppression request", arrow="<--")
         else:
             response = self.send_command_receive_ack(SDK_defs.CMD_RAIN_FOG_OFF, "Lidar", 3)
-            self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                           "   <--     sent turn off rain/fog suppression request")
+            self.msg.prefix_print("sent turn off rain/fog suppression request", arrow="<--")
 
         if response == 1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                           "   -->     FAILED to set rain/fog suppression value")
+            self.msg.prefix_print("FAILED to set rain/fog suppression value")
         elif response == -1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                           "   -->     incorrect set rain/fog suppression response")
+            self.msg.prefix_print("incorrect set rain/fog suppression response")
 
     def setRainFogSuppression(self, on_off):
         self._set_rain_fog_suppression(on_off)
@@ -1149,19 +1137,15 @@ class OpenPyLivox:
     def _set_fan(self, on_off):
         if on_off:
             response = self.send_command_receive_ack(SDK_defs.CMD_FAN_ON, "Lidar", 4)
-            self.msg.print(
-                "   " + self._sensor_ip + self._format_spaces + "   <--     sent turn on fan request")
+            self.msg.prefix_print("sent turn on fan request", arrow="<--")
         else:
             response = self.send_command_receive_ack(SDK_defs.CMD_FAN_OFF, "Lidar", 4)
-            self.msg.print(
-                "   " + self._sensor_ip + self._format_spaces + "   <--     sent turn off fan request")
+            self.msg.prefix_print("sent turn off fan request", arrow="<--")
 
         if response == 1:
-            self.msg.print(
-                "   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to set fan value")
+            self.msg.prefix_print("FAILED to set fan value")
         elif response == -1:
-            self.msg.print(
-                "   " + self._sensor_ip + self._format_spaces + "   -->     incorrect set fan response")
+            self.msg.prefix_print("incorrect set fan response")
 
     def setFan(self, on_off):
         self._set_fan(on_off)
@@ -1174,7 +1158,7 @@ class OpenPyLivox:
             self._wait_for_idle()
 
             self._cmd_socket.sendto(SDK_defs.CMD_GET_FAN, (self._sensor_ip, 65000))
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent get fan state request")
+            self.msg.prefix_print("sent get fan state request", arrow="<--")
 
             # check for proper response from get fan request
             if select.select([self._cmd_socket], [], [], 0.1)[0]:
@@ -1184,14 +1168,12 @@ class OpenPyLivox:
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "5":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     if ret_code == 1:
-                        self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                                       "   -->     FAILED to get fan state value")
+                        self.msg.prefix_print("FAILED to get fan state value")
                     elif ret_code == 0:
                         value = struct.unpack('<B', binData[12:13])[0]
                         print("   " + self._sensor_ip + self._format_spaces + "   -->     fan state: " + str(value))
                 else:
-                    self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                                   "   -->     incorrect get fan state response")
+                    self.msg.prefix_print("incorrect get fan state response")
         else:
             self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
 
@@ -1203,42 +1185,34 @@ class OpenPyLivox:
     def setLidarReturnMode(self, Mode_ID):
         if Mode_ID == 0:
             response = self.send_command_receive_ack(SDK_defs.CMD_LIDAR_SINGLE_1ST, "Lidar", 6)
-            self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                           "   <--     sent single first return lidar mode request")
+            self.msg.prefix_print("sent single first return lidar mode request", arrow="<--")
         elif Mode_ID == 1:
             response = self.send_command_receive_ack(SDK_defs.CMD_LIDAR_SINGLE_STRONGEST, "Lidar", 6)
-            self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                           "   <--     sent single strongest return lidar mode request")
+            self.msg.prefix_print("sent single strongest return lidar mode request", arrow="<--")
         elif Mode_ID == 2:
             response = self.send_command_receive_ack(SDK_defs.CMD_LIDAR_DUAL, "Lidar", 6)
-            self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                           "   <--     sent dual return lidar mode request")
+            self.msg.prefix_print("sent dual return lidar mode request", arrow="<--")
         else:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                           "   <--     Invalid mode_id for setting lidar return mode")
+            self.msg.prefix_print("Invalid mode_id for setting lidar return mode", arrow="<--")
             return
 
         if response == 1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to set lidar mode value")
+            self.msg.prefix_print("FAILED to set lidar mode value")
         elif response == -1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                           "   -->     incorrect set lidar mode response")
+            self.msg.prefix_print("incorrect set lidar mode response")
 
     def setIMUdataPush(self, on_off: bool):
         if on_off:
             response = self.send_command_receive_ack(SDK_defs.CMD_IMU_DATA_ON, "Lidar", 8)
-            self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                           "   <--     sent start IMU data push request")
+            self.msg.prefix_print("sent start IMU data push request", arrow="<--")
         else:
             response = self.send_command_receive_ack(SDK_defs.CMD_IMU_DATA_OFF, "Lidar", 8)
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent stop IMU data push request")
+            self.msg.prefix_print("sent stop IMU data push request", arrow="<--")
 
         if response == 1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                           "   -->     FAILED to set IMU data push value")
+            self.msg.prefix_print("FAILED to set IMU data push value")
         elif response == -1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                           "   -->     incorrect set IMU data push response")
+            self.msg.prefix_print("incorrect set IMU data push response")
 
     def getIMUdataPush(self):
 
@@ -1246,7 +1220,7 @@ class OpenPyLivox:
             self._wait_for_idle()
 
             self._cmd_socket.sendto(SDK_defs.CMD_GET_IMU, (self._sensor_ip, 65000))
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent get IMU push state request")
+            self.msg.prefix_print("sent get IMU push state request", arrow="<--")
 
             # check for proper response from get IMU request
             if select.select([self._cmd_socket], [], [], 0.1)[0]:
@@ -1256,15 +1230,13 @@ class OpenPyLivox:
                 if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "9":
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     if ret_code == 1:
-                        self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                                       "   -->     FAILED to get IMU push state value")
+                        self.msg.prefix_print("FAILED to get IMU push state value")
                     elif ret_code == 0:
                         value = struct.unpack('<B', bin_data[12:13])[0]
                         print("   " + self._sensor_ip + self._format_spaces +
                               "   -->     IMU push state: " + str(value))
                 else:
-                    self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                                   "   -->     incorrect get IMU push state response")
+                    self.msg.prefix_print("incorrect get IMU push state response")
         else:
             self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
 
