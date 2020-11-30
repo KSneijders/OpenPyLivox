@@ -280,7 +280,7 @@ class OpenPyLivox:
             if select.select([self._cmd_socket], [], [], 0.1)[0]:
                 binData, addr = self._cmd_socket.recvfrom(16)
                 _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
-                # self.msg.print(ack + " / " + cmd_set + " / " + cmd_id)  # TODO: Comment back in for logging
+                # self.msg.print(ack + " / " + cmd_set + " / " + cmd_id)  # TODO: Put into logging
                 if ack == "ACK (response)" and cmd_set == expected_command_set and cmd_id == str(expected_command_id):
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     return ret_code
@@ -290,17 +290,17 @@ class OpenPyLivox:
             self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
             return -2
 
-    def send_command_receive_data(self, command, expected_command_set, expected_command_id):
+    def send_command_receive_data(self, command, expected_command_set, expected_command_id, length_bytes):
         if self._is_connected:
             self._wait_for_idle()
             self._cmd_socket.sendto(command, (self._sensor_ip, 65000))
 
             # check for proper response from read extrinsics request
             if select.select([self._cmd_socket], [], [], 0.1)[0]:
-                bin_data, addr = self._cmd_socket.recvfrom(40)
+                bin_data, addr = self._cmd_socket.recvfrom(length_bytes)
                 _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, bin_data)
 
-                if ack == "ACK (response)" and cmd_set == expected_command_set and cmd_id == expected_command_id:
+                if ack == "ACK (response)" and cmd_set == expected_command_set and cmd_id == str(expected_command_id):
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     return ret_code, bin_data
                 else:
@@ -330,27 +330,19 @@ class OpenPyLivox:
             self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect reboot response")
 
     def _query(self):
-        self._wait_for_idle()
-        self._cmd_socket.sendto(sdkdefs.CMD_QUERY, (self._sensor_ip, 65000))
-
-        # check for proper response from query request
-        if select.select([self._cmd_socket], [], [], 0.1)[0]:
-
-            binData, addr = self._cmd_socket.recvfrom(20)
-            _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
-
-            if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "2":
-                ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
-                if ret_code == 1:
+        response, data = self.send_command_receive_data(sdkdefs.CMD_QUERY, "General", 2, 20)
+        if response == 0:
+            _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, data)
+            AA = str(int.from_bytes(ret_code_bin[1], byteorder='little')).zfill(2)
+            BB = str(int.from_bytes(ret_code_bin[2], byteorder='little')).zfill(2)
+            CC = str(int.from_bytes(ret_code_bin[3], byteorder='little')).zfill(2)
+            DD = str(int.from_bytes(ret_code_bin[4], byteorder='little')).zfill(2)
+            self._firmware = AA + "." + BB + "." + CC + DD
+            # self.msg.print(f"Firmware version is {self._firmware}")
+        elif response == 1:
                     self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to receive query results")
-                elif ret_code == 0:
-                    AA = str(int.from_bytes(ret_code_bin[1], byteorder='little')).zfill(2)
-                    BB = str(int.from_bytes(ret_code_bin[2], byteorder='little')).zfill(2)
-                    CC = str(int.from_bytes(ret_code_bin[3], byteorder='little')).zfill(2)
-                    DD = str(int.from_bytes(ret_code_bin[4], byteorder='little')).zfill(2)
-                    self._firmware = AA + "." + BB + "." + CC + DD
-            else:
-                self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect query response")
+        elif response == -1:
+            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect query response")
 
     def _info(self, binData):
 
@@ -829,37 +821,25 @@ class OpenPyLivox:
             self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
 
     def _data_start_rt(self):
+        if not self._is_data:
+            self._capture_stream = DataCaptureThread(self._sensor_ip, self._data_socket, None, "", 1, 0, 0, 0,
+                                                     self._show_messages, self._format_spaces, self._device_type)
+            time.sleep(0.12)
 
-        if self._is_connected:
-            if not self._is_data:
-                self._capture_stream = DataCaptureThread(self._sensor_ip, self._data_socket, None, "", 1, 0, 0, 0,
-                                                         self._show_messages, self._format_spaces, self._device_type)
-                time.sleep(0.12)
-                self._wait_for_idle()
-                self._cmd_socket.sendto(sdkdefs.CMD_DATA_START, (self._sensor_ip, 65000))
-                self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent start data stream request")
-
-                # check for proper response from data start request
-                if select.select([self._cmd_socket], [], [], 0.1)[0]:
-                    binData, addr = self._cmd_socket.recvfrom(16)
-                    _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
-
-                    if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "4":
-                        ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
-                        if ret_code == 1:
-                            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to start data stream")
-                            if self._capture_stream is not None:
-                                self._capture_stream.stop()
-                            time.sleep(0.1)
-                            self._is_data = False
-                        else:
-                            self._is_data = True
-                    else:
-                        self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect start data stream response")
-            else:
-                self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     data stream already started")
+            response = self.send_command_receive_ack(sdkdefs.CMD_DATA_START, "General", 4)
+            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent start data stream request")
+            if response == 1:
+                self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to start data stream")
+                if self._capture_stream is not None:
+                    self._capture_stream.stop()
+                time.sleep(0.1)
+                self._is_data = False
+            elif response == 0:
+                self._is_data = True
+            elif response == -1:
+                self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect start data stream response")
         else:
-            self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
+            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     data stream already started")
 
     @deprecated(version='1.1.0', reason="You should use .dataStart_RT_B() instead")
     def dataStart_RT(self):
@@ -868,37 +848,25 @@ class OpenPyLivox:
             self._mid100_sensors[i]._data_start_rt()
 
     def _data_start_rt_b(self):
+        if not self._is_data:
+            self._capture_stream = DataCaptureThread(self._sensor_ip, self._data_socket, self._imu_socket, "", 2, 0, 0,
+                                                     0, self._show_messages, self._format_spaces, self._device_type)
+            time.sleep(0.12)
 
-        if self._is_connected:
-            if not self._is_data:
-                self._capture_stream = DataCaptureThread(self._sensor_ip, self._data_socket, self._imu_socket, "", 2, 0, 0,
-                                                         0, self._show_messages, self._format_spaces, self._device_type)
-                time.sleep(0.12)
-                self._wait_for_idle()
-                self._cmd_socket.sendto(sdkdefs.CMD_DATA_START, (self._sensor_ip, 65000))
-                self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent start data stream request")
+            response = self.send_command_receive_ack(sdkdefs.CMD_DATA_START, "General", 4)
+            if response == 0:
+                self._is_data = True
+            elif response == 1:
+                self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to start data stream")
+                if self._capture_stream is not None:
+                    self._capture_stream.stop()
+                time.sleep(0.1)
+                self._is_data = False
+            elif response == -1:
+                self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect start data stream response")
 
-                # check for proper response from data start request
-                if select.select([self._cmd_socket], [], [], 0.1)[0]:
-                    binData, addr = self._cmd_socket.recvfrom(16)
-                    _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
-
-                    if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "4":
-                        ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
-                        if ret_code == 1:
-                            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to start data stream")
-                            if self._capture_stream is not None:
-                                self._capture_stream.stop()
-                            time.sleep(0.1)
-                            self._is_data = False
-                        else:
-                            self._is_data = True
-                    else:
-                        self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect start data stream response")
-            else:
-                self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     data stream already started")
         else:
-            self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
+            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     data stream already started")
 
     def dataStart_RT_B(self):
         self._data_start_rt_b()
@@ -1016,7 +984,7 @@ class OpenPyLivox:
             self._mid100_sensors[i]._set_spherical_cs()
 
     def readExtrinsic(self):
-        response, data = self.send_command_receive_data(sdkdefs.CMD_READ_EXTRINSIC, "Lidar", 2)
+        response, data = self.send_command_receive_data(sdkdefs.CMD_READ_EXTRINSIC, "Lidar", 2, 40)
         self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent read extrinsic parameters request")
         if response == 0:
             self._roll = struct.unpack('<f', data[12:16])[0]
