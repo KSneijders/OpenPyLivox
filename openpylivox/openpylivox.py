@@ -316,7 +316,7 @@ class OpenPyLivox:
 
     def _disconnect_sensor(self):
         response = self.send_command_receive_ack(sdkdefs.CMD_DISCONNECT, "General", 6)
-        # self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent lidar disconnect request")  # TODO: Proper logging
+        # self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent lidar disconnect request")  # TODO: Put into logging
         if response == 1:
             self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to disconnect")
         elif response == -1:
@@ -452,59 +452,60 @@ class OpenPyLivox:
         else:
             print("*** ERROR: Failed to auto determine computer IP address ***")
 
-    def connect(self, computerIP, sensorIP, dataPort, cmdPort, imuPort, sensor_name_override=""):
+    # TODO: Refactor. But holy shit this looks like hell.
+    def connect(self, computer_ip, sensor_ip, data_port, cmd_port, imu_port, sensor_name_override=""):
 
-        numFound = 0
+        num_found = 0
 
         if not self._is_connected:
 
-            self._computer_ip = self._check_ip(computerIP)
-            self._sensor_ip = self._check_ip(sensorIP)
-            self._data_port = self._check_port(dataPort)
-            self._cmd_port = self._check_port(cmdPort)
-            self._imu_port = self._check_port(imuPort)
+            self._computer_ip = self._check_ip(computer_ip)
+            self._sensor_ip = self._check_ip(sensor_ip)
+            self._data_port = self._check_port(data_port)
+            self._cmd_port = self._check_port(cmd_port)
+            self._imu_port = self._check_port(imu_port)
 
             if self._computer_ip and self._sensor_ip and self._data_port != -1 and self._cmd_port != -1 and self._imu_port != -1:
                 num_spaces = 15 - len(self._sensor_ip)
                 for i in range(num_spaces):
                     self._format_spaces += " "
-                unique_serialNums, unique_sensors, sensor_IPs = self._re_init()
-                numFound = len(unique_sensors)
+                unique_serial_nums, unique_sensors, sensor_ips = self._re_init()
+                num_found = len(unique_sensors)
                 time.sleep(0.1)
 
-                for i in range(len(sensor_IPs)):
-                    if self._sensor_ip == sensor_IPs[i][0]:
-                        self._device_type = sensor_IPs[i][1]
+                for i in range(len(sensor_ips)):
+                    if self._sensor_ip == sensor_ips[i][0]:
+                        self._device_type = sensor_ips[i][1]
 
                 if sensor_name_override:
                     self._device_type = sensor_name_override
 
                 self._data_port, self._cmd_port, self._imu_port = self._bind_ports()
 
-                IP_parts = self._computer_ip.split(".")
-                IPhex = str(hex(int(IP_parts[0]))).replace('0x', '').zfill(2)
-                IPhex += str(hex(int(IP_parts[1]))).replace('0x', '').zfill(2)
-                IPhex += str(hex(int(IP_parts[2]))).replace('0x', '').zfill(2)
-                IPhex += str(hex(int(IP_parts[3]))).replace('0x', '').zfill(2)
-                dataHexAll = str(hex(int(self._data_port))).replace('0x', '').zfill(4)
-                dataHex = dataHexAll[2:] + dataHexAll[:-2]
-                cmdHexAll = str(hex(int(self._cmd_port))).replace('0x', '').zfill(4)
-                cmdHex = cmdHexAll[2:] + cmdHexAll[:-2]
-                imuHexAll = str(hex(int(self._imu_port))).replace('0x', '').zfill(4)
-                imuHex = imuHexAll[2:] + imuHexAll[:-2]
-                cmdString = "AA011900000000DC580001" + IPhex + dataHex + cmdHex + imuHex
-                binString = bytes(cmdString, encoding='utf-8')
-                crc32checksum = helper.crc32from_str(binString)
-                cmdString += crc32checksum
-                binString = bytes(cmdString, encoding='utf-8')
+                ip_parts = self._computer_ip.split(".")
+                ip_hex = str(hex(int(ip_parts[0]))).replace('0x', '').zfill(2)
+                ip_hex += str(hex(int(ip_parts[1]))).replace('0x', '').zfill(2)
+                ip_hex += str(hex(int(ip_parts[2]))).replace('0x', '').zfill(2)
+                ip_hex += str(hex(int(ip_parts[3]))).replace('0x', '').zfill(2)
+                data_hex_all = str(hex(int(self._data_port))).replace('0x', '').zfill(4)
+                data_hex = data_hex_all[2:] + data_hex_all[:-2]
+                cmd_hex_all = str(hex(int(self._cmd_port))).replace('0x', '').zfill(4)
+                cmd_hex = cmd_hex_all[2:] + cmd_hex_all[:-2]
+                imu_hex_all = str(hex(int(self._imu_port))).replace('0x', '').zfill(4)
+                imu_hex = imu_hex_all[2:] + imu_hex_all[:-2]
+                cmd_string = "AA011900000000DC580001" + ip_hex + data_hex + cmd_hex + imu_hex
+                bin_string = bytes(cmd_string, encoding='utf-8')
+                crc32checksum = helper.crc32from_str(bin_string)
+                cmd_string += crc32checksum
+                bin_string = bytes(cmd_string, encoding='utf-8')
 
-                connect_request = bytes.fromhex((binString).decode('ascii'))
+                connect_request = bytes.fromhex(bin_string.decode('ascii'))
                 self._cmd_socket.sendto(connect_request, (self._sensor_ip, 65000))
 
                 # check for proper response from connection request
                 if select.select([self._cmd_socket], [], [], 0.1)[0]:
-                    binData, addr = self._cmd_socket.recvfrom(16)
-                    _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
+                    bin_data, addr = self._cmd_socket.recvfrom(16)
+                    _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, bin_data)
 
                     if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "1":
                         ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
@@ -526,124 +527,123 @@ class OpenPyLivox:
         else:
             self.msg.print("Already connected to the Livox " + self._device_type + " at IP: " + self._sensor_ip)
 
-        return numFound
+        return num_found
 
-    def auto_connect(self, manualComputerIP=""):
+    def auto_connect(self, manual_computer_ip=""):
 
-        numFound = 0
+        num_found = 0
 
-        if not manualComputerIP:
+        if not manual_computer_ip:
             self._auto_computer_ip()
         else:
-            self._computer_ip = manualComputerIP
+            self._computer_ip = manual_computer_ip
 
         if self._computer_ip:
 
-            lidarSensorIPs, serialNums, ipRangeCodes, sensorTypes = self._search_for_sensors(False)
+            lidar_sensor_ips, serial_nums, ip_range_codes, sensor_types = self._search_for_sensors(False)
 
-            unique_serialNums = []
+            unique_serial_nums = []
             unique_sensors = []
-            IP_groups = []
-            ID_groups = []
+            ip_groups = []
+            id_groups = []
 
-            for i in range(len(lidarSensorIPs)):
+            for i in range(len(lidar_sensor_ips)):
                 if i == 0:
-                    unique_serialNums.append(serialNums[i])
+                    unique_serial_nums.append(serial_nums[i])
                 else:
                     matched = False
-                    for j in range(len(unique_serialNums)):
-                        if serialNums[i] == unique_serialNums[j]:
+                    for j in range(len(unique_serial_nums)):
+                        if serial_nums[i] == unique_serial_nums[j]:
                             matched = True
                             break
                     if not matched:
-                        unique_serialNums.append(serialNums[i])
+                        unique_serial_nums.append(serial_nums[i])
 
-            for i in range(len(unique_serialNums)):
+            for i in range(len(unique_serial_nums)):
                 count = 0
-                IPs = ""
-                IDs = ""
-                for j in range(len(serialNums)):
-                    if serialNums[j] == unique_serialNums[i]:
+                ips = ""
+                ids = ""
+                for j in range(len(serial_nums)):
+                    if serial_nums[j] == unique_serial_nums[i]:
                         count += 1
-                        IPs += lidarSensorIPs[j] + ","
-                        IDs += str(ipRangeCodes[j]) + ","
+                        ips += lidar_sensor_ips[j] + ","
+                        ids += str(ip_range_codes[j]) + ","
                 if count == 1:
-                    unique_sensors.append(sensorTypes[i])
+                    unique_sensors.append(sensor_types[i])
                 elif count == 2:
                     unique_sensors.append("NA")
                 elif count == 3:
                     unique_sensors.append("Mid-100")
-                IP_groups.append(IPs[:-1])
-                ID_groups.append(IDs[:-1])
+                ip_groups.append(ips[:-1])
+                id_groups.append(ids[:-1])
 
             status_message = ""
 
-            if len(unique_serialNums) > 0:
+            if len(unique_serial_nums) > 0:
                 if self._show_messages:
                     status_message = "\nUsing computer IP address: " + self._computer_ip + "\n\n"
-                for i in range(0, len(unique_serialNums)):
-                    IPs_list = IP_groups[i].split(',')
-                    IDs_list = ID_groups[i].split(',')
-                    IPs_mess = ""
-                    last_IP_num = []
-                    for j in range(len(IPs_list)):
-                        last_IP_num.append(int(IPs_list[j].split('.')[3]))
-                    last_IP_num.sort()
-                    for j in range(len(last_IP_num)):
-                        for k in range(len(IPs_list)):
-                            if last_IP_num[j] == int(IPs_list[k].split('.')[3]):
-                                numspaces = " "
-                                if last_IP_num[j] < 100:
-                                    numspaces += " "
-                                if last_IP_num[j] < 10:
-                                    numspaces += " "
-                                IPs_mess += str(IPs_list[k]) + numspaces + "(ID: " + str(
-                                    IDs_list[k]) + ")\n                 "
+                for i in range(0, len(unique_serial_nums)):
+                    ips_list = ip_groups[i].split(',')
+                    ids_list = id_groups[i].split(',')
+                    ips_mess = ""
+                    last_ip_num = []
+                    for j in range(len(ips_list)):
+                        last_ip_num.append(int(ips_list[j].split('.')[3]))
+                    last_ip_num.sort()
+                    for j in range(len(last_ip_num)):
+                        for k in range(len(ips_list)):
+                            if last_ip_num[j] == int(ips_list[k].split('.')[3]):
+                                num_spaces = " "
+                                if last_ip_num[j] < 100:
+                                    num_spaces += " "
+                                if last_ip_num[j] < 10:
+                                    num_spaces += " "
+                                ips_mess += str(ips_list[k]) + num_spaces + "(ID: " + str(
+                                    ids_list[k]) + ")\n                 "
                                 break
                     if unique_sensors[i] != "NA":
                         status_message += "   *** Discovered a Livox sensor ***\n"
                         status_message += "           Type: " + unique_sensors[i] + "\n"
-                        status_message += "         Serial: " + unique_serialNums[i] + "\n"
-                        status_message += "          IP(s): " + IPs_mess + "\n"
+                        status_message += "         Serial: " + unique_serial_nums[i] + "\n"
+                        status_message += "          IP(s): " + ips_mess + "\n"
 
             if len(unique_sensors) > 0 and unique_sensors[0] != "NA":
                 status_message = status_message[:-1]
                 print(status_message)
                 self.msg.print("Attempting to auto-connect to the Livox " + unique_sensors[0] + " with S/N: " +
-                          unique_serialNums[0])
+                          unique_serial_nums[0])
 
                 if unique_sensors[0] == "Mid-100":
-                    sensor_IPs = None
-                    sensor_IDs = None
-                    for i in range(len(IP_groups)):
-                        ind_IPs = IP_groups[i].split(',')
-                        ind_IDs = ID_groups[i].split(',')
-                        for j in range(len(ind_IPs)):
-                            if lidarSensorIPs[0] == ind_IPs[j]:
-                                sensor_IPs = ind_IPs
-                                sensor_IDs = ind_IDs
+                    sensor_ips = None
+                    sensor_ids = None
+                    for i in range(len(ip_groups)):
+                        ind_ips = ip_groups[i].split(',')
+                        ind_ids = id_groups[i].split(',')
+                        for j in range(len(ind_ips)):
+                            if lidar_sensor_ips[0] == ind_ips[j]:
+                                sensor_ips = ind_ips
+                                sensor_ids = ind_ids
 
-                    sensorM = OpenPyLivox(self._init_show_messages)
-                    sensorR = OpenPyLivox(self._init_show_messages)
+                    sensor_m = OpenPyLivox(self._init_show_messages)
+                    sensor_r = OpenPyLivox(self._init_show_messages)
 
                     for i in range(3):
-                        if int(sensor_IDs[i]) == 1:
-                            self.connect(self._computer_ip, sensor_IPs[i], 0, 0, 0, "Mid-100 (L)")
+                        if int(sensor_ids[i]) == 1:
+                            self.connect(self._computer_ip, sensor_ips[i], 0, 0, 0, "Mid-100 (L)")
                             for j in range(3):
-                                if int(sensor_IDs[j]) == 2:
-                                    sensorM.connect(self._computer_ip, sensor_IPs[j], 0, 0, 0, "Mid-100 (M)")
-                                    self._mid100_sensors.append(sensorM)
+                                if int(sensor_ids[j]) == 2:
+                                    sensor_m.connect(self._computer_ip, sensor_ips[j], 0, 0, 0, "Mid-100 (M)")
+                                    self._mid100_sensors.append(sensor_m)
                                     for k in range(3):
-                                        if int(sensor_IDs[k]) == 3:
-                                            numFound = sensorR.connect(self._computer_ip, sensor_IPs[k], 0, 0, 0,
-                                                                       "Mid-100 (R)")
-                                            self._mid100_sensors.append(sensorR)
+                                        if int(sensor_ids[k]) == 3:
+                                            num_found = sensor_r.connect(self._computer_ip, sensor_ips[k], 0, 0, 0, "Mid-100 (R)")
+                                            self._mid100_sensors.append(sensor_r)
                                             break
                                     break
                             break
                 else:
                     self._show_messages = False
-                    numFound = self.connect(self._computer_ip, lidarSensorIPs[0], 0, 0, 0)
+                    num_found = self.connect(self._computer_ip, lidar_sensor_ips[0], 0, 0, 0)
                     self._device_type = unique_sensors[0]
                     self.resetShowMessages()
 
@@ -653,7 +653,7 @@ class OpenPyLivox:
         else:
             self.msg.print("*** ERROR: Failed to auto determine the computer IP address ***")
 
-        return numFound
+        return num_found
 
     def _disconnect(self):
 
@@ -1281,6 +1281,7 @@ class OpenPyLivox:
                     self._capture_stream.stop()
                 self._is_writing = False
 
+    # TODO: Refactor
     def _saveDataToFile(self, filePathAndName, secsToWait, duration):
 
         if self._is_connected:
