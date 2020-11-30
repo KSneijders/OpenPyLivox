@@ -76,6 +76,7 @@ class OpenPyLivox:
         self._device_type = "UNKNOWN"
         self._mid100_sensors = []
         self._format_spaces = ""
+        self._target_output_queue = None
 
     def _re_init(self):
 
@@ -904,6 +905,46 @@ class OpenPyLivox:
         self._data_start_rt_b()
         for i in range(len(self._mid100_sensors)):
             self._mid100_sensors[i]._data_start_rt_b()
+
+    def set_output_queue(self, output_queue):
+        self._target_output_queue = output_queue
+
+    def _data_start_realtime_to_queue(self):
+
+        if self._is_connected:
+            if not self._is_data:
+                self._capture_stream = DataCaptureThread(self._sensor_ip, self._data_socket, self._imu_socket, "", 3, 0, 0, 0, self._show_messages, self._format_spaces, self._device_type, self._target_output_queue)
+                time.sleep(0.12)
+                self._wait_for_idle()
+                self._cmd_socket.sendto(sdkdefs.CMD_DATA_START, (self._sensor_ip, 65000))
+                self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent start data stream request")
+
+                # check for proper response from data start request
+                if select.select([self._cmd_socket], [], [], 0.1)[0]:
+                    binData, addr = self._cmd_socket.recvfrom(16)
+                    _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
+
+                    if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "4":
+                        ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
+                        if ret_code == 1:
+                            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to start data stream")
+                            if self._capture_stream is not None:
+                                self._capture_stream.stop()
+                            time.sleep(0.1)
+                            self._is_data = False
+                        else:
+                            self._is_data = True
+                    else:
+                        self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect start data stream response")
+            else:
+                self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     data stream already started")
+        else:
+            self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
+
+    def data_start_realtime_to_queue(self):
+        self._data_start_realtime_to_queue()
+        for i in range(len(self._mid100_sensors)):
+            self._mid100_sensors[i]._data_start_realtime_to_queue()
 
     def _data_stop(self):
         if not self._is_data:
@@ -1899,43 +1940,43 @@ def _convertBin2CSV(filePathAndName, deleteBin):
         print("*** ERROR: An unknown error occurred while converting OPL binary data ***")
 
 
-def convertBin2CSV(filePathAndName, deleteBin=False):
+def convertBin2CSV(file_path_and_name, delete_bin=False):
     print()
-    path_file = Path(filePathAndName)
+    path_file = Path(file_path_and_name)
     filename = path_file.stem
-    exten = path_file.suffix
+    extension = path_file.suffix
 
-    if os.path.isfile(filePathAndName):
-        _convertBin2CSV(filePathAndName, deleteBin)
+    if os.path.isfile(file_path_and_name):
+        _convertBin2CSV(file_path_and_name, delete_bin)
 
-    if os.path.isfile(filename + "_M" + exten):
-        _convertBin2CSV(filename + "_M" + exten, deleteBin)
+    if os.path.isfile(filename + "_M" + extension):
+        _convertBin2CSV(filename + "_M" + extension, delete_bin)
 
-    if os.path.isfile(filename + "_R" + exten):
-        _convertBin2CSV(filename + "_R" + exten, deleteBin)
+    if os.path.isfile(filename + "_R" + extension):
+        _convertBin2CSV(filename + "_R" + extension, delete_bin)
 
 
-def _convertBin2LAS(filePathAndName, deleteBin):
-    binFile = None
-    csvFile = None
-    imuFile = None
-    imu_csvFile = None
+def _convertBin2LAS(file_path_and_name, delete_bin):
+    bin_file = None
+    csv_file = None
+    imu_file = None
+    imu_csv_file = None
 
     try:
-        dataClass = 0
-        if os.path.exists(filePathAndName) and os.path.isfile(filePathAndName):
-            bin_size = Path(filePathAndName).stat().st_size - 15
-            binFile = open(filePathAndName, "rb")
+        data_class = 0
+        if os.path.exists(file_path_and_name) and os.path.isfile(file_path_and_name):
+            bin_size = Path(file_path_and_name).stat().st_size - 15
+            bin_file = open(file_path_and_name, "rb")
 
-            checkMessage = (binFile.read(11)).decode('UTF-8')
-            if checkMessage == "OPENPYLIVOX":
-                firmwareType = struct.unpack('<h', binFile.read(2))[0]
-                dataType = struct.unpack('<h', binFile.read(2))[0]
+            check_message = (bin_file.read(11)).decode('UTF-8')
+            if check_message == "OPENPYLIVOX":
+                firmware_type = struct.unpack('<h', bin_file.read(2))[0]
+                data_type = struct.unpack('<h', bin_file.read(2))[0]
                 divisor = 1
 
-                if firmwareType >= 1 and firmwareType <= 3:
+                if 1 <= firmware_type <= 3:
                     # LAS file creation only works with Cartesian data types (decided not to convert spherical obs.)
-                    if dataType == 0 or dataType == 2 or dataType == 4:
+                    if data_type == 0 or data_type == 2 or data_type == 4:
                         print("CONVERTING OPL BINARY DATA, PLEASE WAIT...")
 
                         coord1s = []
@@ -1943,19 +1984,19 @@ def _convertBin2LAS(filePathAndName, deleteBin):
                         coord3s = []
                         intensity = []
                         times = []
-                        returnNums = []
+                        return_nums = []
 
-                        if firmwareType == 1 and dataType == 0:
-                            dataClass = 1
+                        if firmware_type == 1 and data_type == 0:
+                            data_class = 1
                             divisor = 21
-                        elif firmwareType > 1 and dataType == 0:
-                            dataClass = 3
+                        elif firmware_type > 1 and data_type == 0:
+                            data_class = 3
                             divisor = 22
-                        elif firmwareType == 1 and dataType == 2:
-                            dataClass = 5
+                        elif firmware_type == 1 and data_type == 2:
+                            data_class = 5
                             divisor = 22
-                        elif firmwareType == 1 and dataType == 4:
-                            dataClass = 7
+                        elif firmware_type == 1 and data_type == 4:
+                            data_class = 7
                             divisor = 36
 
                         num_recs = int(bin_size / divisor)
@@ -1964,53 +2005,53 @@ def _convertBin2LAS(filePathAndName, deleteBin):
                         while True:
                             try:
                                 # Mid-40/100 Cartesian single return
-                                if dataClass == 1:
-                                    coord1s.append(float(struct.unpack('<i', binFile.read(4))[0]) / 1000.0)
-                                    coord2s.append(float(struct.unpack('<i', binFile.read(4))[0]) / 1000.0)
-                                    coord3s.append(float(struct.unpack('<i', binFile.read(4))[0]) / 1000.0)
-                                    intensity.append(int.from_bytes(binFile.read(1), byteorder='little'))
-                                    times.append(float(struct.unpack('<d', binFile.read(8))[0]))
-                                    returnNums.append(1)
+                                if data_class == 1:
+                                    coord1s.append(float(struct.unpack('<i', bin_file.read(4))[0]) / 1000.0)
+                                    coord2s.append(float(struct.unpack('<i', bin_file.read(4))[0]) / 1000.0)
+                                    coord3s.append(float(struct.unpack('<i', bin_file.read(4))[0]) / 1000.0)
+                                    intensity.append(int.from_bytes(bin_file.read(1), byteorder='little'))
+                                    times.append(float(struct.unpack('<d', bin_file.read(8))[0]))
+                                    return_nums.append(1)
 
                                 # Mid-40/100 Cartesian multiple return
-                                elif dataClass == 3:
-                                    coord1s.append(float(struct.unpack('<i', binFile.read(4))[0]) / 1000.0)
-                                    coord2s.append(float(struct.unpack('<i', binFile.read(4))[0]) / 1000.0)
-                                    coord3s.append(float(struct.unpack('<i', binFile.read(4))[0]) / 1000.0)
-                                    intensity.append(int.from_bytes(binFile.read(1), byteorder='little'))
-                                    times.append(float(struct.unpack('<d', binFile.read(8))[0]))
-                                    returnNums.append(int((binFile.read(1)).decode('UTF-8')))
+                                elif data_class == 3:
+                                    coord1s.append(float(struct.unpack('<i', bin_file.read(4))[0]) / 1000.0)
+                                    coord2s.append(float(struct.unpack('<i', bin_file.read(4))[0]) / 1000.0)
+                                    coord3s.append(float(struct.unpack('<i', bin_file.read(4))[0]) / 1000.0)
+                                    intensity.append(int.from_bytes(bin_file.read(1), byteorder='little'))
+                                    times.append(float(struct.unpack('<d', bin_file.read(8))[0]))
+                                    return_nums.append(int((bin_file.read(1)).decode('UTF-8')))
 
                                 # Horizon/Tele-15 Cartesian single return (SDK Data Type 2)
-                                elif dataClass == 5:
-                                    coord1s.append(float(struct.unpack('<i', binFile.read(4))[0]) / 1000.0)
-                                    coord2s.append(float(struct.unpack('<i', binFile.read(4))[0]) / 1000.0)
-                                    coord3s.append(float(struct.unpack('<i', binFile.read(4))[0]) / 1000.0)
-                                    intensity.append(struct.unpack('<B', binFile.read(1))[0])
-                                    tag_bits = str(bin(int.from_bytes(binFile.read(1), byteorder='little')))[2:].zfill(
+                                elif data_class == 5:
+                                    coord1s.append(float(struct.unpack('<i', bin_file.read(4))[0]) / 1000.0)
+                                    coord2s.append(float(struct.unpack('<i', bin_file.read(4))[0]) / 1000.0)
+                                    coord3s.append(float(struct.unpack('<i', bin_file.read(4))[0]) / 1000.0)
+                                    intensity.append(struct.unpack('<B', bin_file.read(1))[0])
+                                    tag_bits = str(bin(int.from_bytes(bin_file.read(1), byteorder='little')))[2:].zfill(
                                         8)
-                                    times.append(float(struct.unpack('<d', binFile.read(8))[0]))
-                                    returnNums.append(1)
+                                    times.append(float(struct.unpack('<d', bin_file.read(8))[0]))
+                                    return_nums.append(1)
 
                                 # Horizon/Tele-15 Cartesian dual return (SDK Data Type 4)
-                                elif dataClass == 7:
-                                    coord1s.append(float(struct.unpack('<i', binFile.read(4))[0]) / 1000.0)
-                                    coord2s.append(float(struct.unpack('<i', binFile.read(4))[0]) / 1000.0)
-                                    coord3s.append(float(struct.unpack('<i', binFile.read(4))[0]) / 1000.0)
-                                    intensity.append(struct.unpack('<B', binFile.read(1))[0])
-                                    tag_bits = str(bin(int.from_bytes(binFile.read(1), byteorder='little')))[2:].zfill(
+                                elif data_class == 7:
+                                    coord1s.append(float(struct.unpack('<i', bin_file.read(4))[0]) / 1000.0)
+                                    coord2s.append(float(struct.unpack('<i', bin_file.read(4))[0]) / 1000.0)
+                                    coord3s.append(float(struct.unpack('<i', bin_file.read(4))[0]) / 1000.0)
+                                    intensity.append(struct.unpack('<B', bin_file.read(1))[0])
+                                    tag_bits = str(bin(int.from_bytes(bin_file.read(1), byteorder='little')))[2:].zfill(
                                         8)
-                                    returnNums.append(1)
+                                    return_nums.append(1)
 
-                                    coord1s.append(float(struct.unpack('<i', binFile.read(4))[0]) / 1000.0)
-                                    coord2s.append(float(struct.unpack('<i', binFile.read(4))[0]) / 1000.0)
-                                    coord3s.append(float(struct.unpack('<i', binFile.read(4))[0]) / 1000.0)
-                                    intensity.append(struct.unpack('<B', binFile.read(1))[0])
-                                    tag_bits = str(bin(int.from_bytes(binFile.read(1), byteorder='little')))[2:].zfill(
+                                    coord1s.append(float(struct.unpack('<i', bin_file.read(4))[0]) / 1000.0)
+                                    coord2s.append(float(struct.unpack('<i', bin_file.read(4))[0]) / 1000.0)
+                                    coord3s.append(float(struct.unpack('<i', bin_file.read(4))[0]) / 1000.0)
+                                    intensity.append(struct.unpack('<B', bin_file.read(1))[0])
+                                    tag_bits = str(bin(int.from_bytes(bin_file.read(1), byteorder='little')))[2:].zfill(
                                         8)
-                                    returnNums.append(2)
+                                    return_nums.append(2)
 
-                                    timestamp_sec = float(struct.unpack('<d', binFile.read(8))[0])
+                                    timestamp_sec = float(struct.unpack('<d', bin_file.read(8))[0])
                                     times.append(timestamp_sec)
                                     times.append(timestamp_sec)
 
@@ -2041,7 +2082,7 @@ def _convertBin2LAS(filePathAndName, deleteBin):
                         hdr.system_id = System_ID
                         hdr.software_id = Software_ID
 
-                        lasfile = laspy.file.File(filePathAndName + ".las", mode="w", header=hdr)
+                        lasfile = laspy.file.File(file_path_and_name + ".las", mode="w", header=hdr)
 
                         coord1s = np.asarray(coord1s, dtype=np.float32)
                         coord2s = np.asarray(coord2s, dtype=np.float32)
@@ -2059,28 +2100,28 @@ def _convertBin2LAS(filePathAndName, deleteBin):
                         lasfile.z = coord3s
                         lasfile.gps_time = np.asarray(times, dtype=np.float32)
                         lasfile.intensity = np.asarray(intensity, dtype=np.int16)
-                        lasfile.return_num = np.asarray(returnNums, dtype=np.int8)
+                        lasfile.return_num = np.asarray(return_nums, dtype=np.int8)
 
                         lasfile.close()
 
                         pbari.close()
-                        binFile.close()
+                        bin_file.close()
                         print(
-                            "   - Point data was converted successfully to LAS, see file: " + filePathAndName + ".las")
-                        if deleteBin:
-                            os.remove(filePathAndName)
+                            "   - Point data was converted successfully to LAS, see file: " + file_path_and_name + ".las")
+                        if delete_bin:
+                            os.remove(file_path_and_name)
                             print("     * OPL point data binary file has been deleted")
                         print()
                         time.sleep(0.5)
                     else:
                         print("*** ERROR: Only Cartesian point data can be converted to an LAS file ***")
-                        binFile.close()
+                        bin_file.close()
                 else:
                     print("*** ERROR: The OPL point data binary file reported a wrong firmware type ***")
-                    binFile.close()
+                    bin_file.close()
 
                 # check for and convert IMU BIN data (if it exists)
-                path_file = Path(filePathAndName)
+                path_file = Path(file_path_and_name)
                 filename = path_file.stem
                 exten = path_file.suffix
                 IMU_file = filename + "_IMU" + exten
@@ -2090,8 +2131,8 @@ def _convertBin2LAS(filePathAndName, deleteBin):
                     num_recs = int(bin_size2 / 32)
                     binFile2 = open(IMU_file, "rb")
 
-                    checkMessage = (binFile2.read(15)).decode('UTF-8')
-                    if checkMessage == "OPENPYLIVOX_IMU":
+                    check_message = (binFile2.read(15)).decode('UTF-8')
+                    if check_message == "OPENPYLIVOX_IMU":
                         with open(IMU_file + ".csv", "w", 1) as csvFile2:
                             csvFile2.write("//gyro_x,gyro_y,gyro_z,acc_x,acc_y,acc_z,time\n")
                             pbari2 = tqdm(total=num_recs, unit=" records", desc="   ")
@@ -2116,7 +2157,7 @@ def _convertBin2LAS(filePathAndName, deleteBin):
                             pbari2.close()
                             binFile2.close()
                             print("   - IMU data was converted successfully to CSV, see file: " + IMU_file + ".csv")
-                            if deleteBin:
+                            if delete_bin:
                                 os.remove(IMU_file)
                                 print("     * OPL IMU data binary file has been deleted")
                     else:
@@ -2124,9 +2165,9 @@ def _convertBin2LAS(filePathAndName, deleteBin):
                         binFile2.close()
             else:
                 print("*** ERROR: The file was not recognized as an OpenPyLivox binary point data file ***")
-                binFile.close()
+                bin_file.close()
     except:
-        binFile.close()
+        bin_file.close()
         print("*** ERROR: An unknown error occurred while converting OPL binary data ***")
 
 

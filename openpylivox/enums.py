@@ -10,6 +10,7 @@ class FileType(IntEnum):
     StoredASCII = 0
     RealtimeASCII = 1
     RealtimeBINARY = 2
+    RealtimeBINQUEUE = 3
 
 
 class FirmwareType(IntEnum):

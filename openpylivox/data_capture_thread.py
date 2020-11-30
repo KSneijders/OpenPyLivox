@@ -60,6 +60,8 @@ class DataCaptureThread:
             callback = self.run_realtime_csv
         elif self.file_type == FileType.RealtimeBINARY:
             callback = self.run_realtime_bin
+        elif self.file_type == FileType.RealtimeBINQUEUE:
+            callback = self.run_realtime_output_to_queue
         else:
             raise ValueError("Unknown filetype.")
 
@@ -602,25 +604,32 @@ class DataCaptureThread:
 
                         if data_type == DataType.CARTESIAN:
                             jump_bytes = 13
+                            cartesian = True
                         elif data_type == DataType.SPHERICAL:
                             jump_bytes = 9
+                            spherical = True
                         elif data_type == 2:  # Cartesian -> Horizon and Tele-15 sensors (single return)
                             jump_bytes = 14
+                            cartesian = True
                         elif data_type == 3:  # Spherical -> Horizon and Tele-15 sensors (single return)
                             jump_bytes = 10
+                            spherical = True
                         elif data_type == 4:  # Cartesian -> Horizon and Tele-15 sensors (dual return)
                             jump_bytes = 28
+                            cartesian = True
                         elif data_type == 5:  # Spherical -> Horizon and Tele-15 sensors (dual return)
                             jump_bytes = 16
+                            spherical = True
                         else:
                             raise ValueError("Unknown datatype.")
 
                         if (check_for_device_type and device_check == 100) or coord:
                             num_pts += 1
-                            bin_file.write(data_pc[byte_pos:byte_pos + jump_bytes])
-                            bin_file.write(struct.pack('<d', timestamp_sec))
+                            to_write = data_pc[byte_pos:byte_pos + jump_bytes]
+                            to_write = to_write + struct.pack('<d', timestamp_sec)
                             if self.firmware_type in [FirmwareType.DOUBLE_RETURN, FirmwareType.TRIPLE_RETURN]:
-                                bin_file.write(str.encode(str(return_num)))
+                                to_write = to_write + str.encode(str(return_num))
+                            target_queue.put(to_write)
                         else:
                             null_pts += 1
                         byte_pos += jump_bytes
@@ -657,15 +666,16 @@ class DataCaptureThread:
         self.null_pts = null_pts
         self.imu_records = imu_records
 
-        self.msg.prefix_print(f"closed BINARY file: {self.file_path_and_name}")
+        # self.msg.prefix_print(f"closed BINARY file: {self.file_path_and_name}")
+        self.msg.prefix_print(f"closing multiprocessing queue")
         self.msg.space_print(32, f"(points: {num_pts} good, {null_pts} null, {num_pts + null_pts} total)")
         if self._device_type == "Horizon" or self._device_type == "Tele-15":
             self.msg.space_print(32, f"(IMU records: {imu_records})")
 
-        bin_file.close()
+        target_queue.put(None)
 
-        if imu_reporting:
-            imu_file.close()
+        #if imu_reporting:
+        #    imu_file.close()
 
 
     def loop_until_capturing(self, verify=True):

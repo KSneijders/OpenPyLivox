@@ -22,6 +22,7 @@ import openpylivox as opl
 # only used for this demo
 # import time
 # import sys
+from multiprocessing import Queue
 
 
 # demo operations for a single Livox Sensor
@@ -65,6 +66,11 @@ def singleSensorDemo():
         serial = sensor.serialNumber()
 
         sensor.showMessages(True)
+
+        # create a multiprocessing queue to write the output to
+        q = Queue()
+        sensor.set_output_queue(q)
+
 
         # set the output coordinate system to Spherical
         sensor.setSphericalCS()
@@ -112,7 +118,10 @@ def singleSensorDemo():
         ##########################################################################################
 
         # start data stream (real-time writing of point cloud data to a BINARY file)
-        sensor.dataStart_RT_B()
+        # sensor.dataStart_RT_B()
+
+        # start data stream (real-time binary point cloud data to a multiprocessing queue)
+        sensor.data_start_realtime_to_queue()
 
         # send UTC time update (only works in conjunction with a hardware-based PPS pulse)
         sensor.updateUTC(2001, 1, 1, 1, 0)
@@ -175,7 +184,7 @@ def singleSensorDemo():
         # only works in conjunction with .dataStart_RT_B()
         # designed so the efficiently collected binary point data can be converted to LAS at any time after data collection
         #opl.convertBin2LAS(filePathAndName, deleteBin=False)
-        opl.convertBin2CSV(filePathAndName, deleteBin=True)
+        opl.convertBin2CSV(filePathAndName, delete_bin=True)
 
         # convert BINARY point data and IMU data (if applicable) to CSV files
         # only works in conjunction with .dataStart_RT_B()
