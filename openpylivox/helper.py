@@ -80,15 +80,18 @@ class Msg:
         if self.show_message:
             print(val)
 
-    def prefix_print(self, string, f_spaces=1, arrow=None):
-        if not (self.sensor_ip and self.format_spaces):
-            raise ValueError("Prefix print hasn't been initialised yet. Do so in the __init__.")
+    def get_prefix(self, f_spaces=1, arrow=None):
         if arrow is None and self.default_arrow is None:
             raise ValueError("Prefix default_arrow hasn't been defined.")
         elif arrow is None:
             arrow = self.default_arrow
+        return f"   {self.sensor_ip}{self.format_spaces * f_spaces}   {arrow}"
 
-        self.print(f"   {self.sensor_ip}{self.format_spaces * f_spaces}   {arrow}     {string}")
+    def prefix_print(self, string, f_spaces=1, arrow=None):
+        if not (self.sensor_ip and self.format_spaces):
+            raise ValueError("Prefix print hasn't been initialised yet. Do so in the __init__.")
+
+        self.print(f"{self.get_prefix(f_spaces, arrow)}     {string}")
 
     def space_print(self, spaces, string):
         self.print(f"{' ' * spaces}{string}")
