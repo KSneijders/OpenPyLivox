@@ -19,7 +19,7 @@ Change Log:
     - v1.0.1 released - May 27th 2020
     - v1.0.2 and v1.0.3 released - May 29th 2020
     - v1.1.0 released - Sept. 11th 2020 (NEVER FORGET!)
-    
+
 """
 
 # standard modules
@@ -42,7 +42,7 @@ from openpylivox import helper
 from openpylivox.data_capture_thread import DataCaptureThread
 from openpylivox.heartbeat_thread import HeartbeatThread
 from openpylivox.helper import _parse_resp
-import openpylivox.LivoxSDKDefines as SDKDefs
+import openpylivox.livox_sdk_defines as SDKDefs
 
 
 class OpenPyLivox:
@@ -72,10 +72,28 @@ class OpenPyLivox:
         self._cmd_port = -1
         self._imu_port = -1
         self._init_show_messages = show_messages
-        self.msg = helper.Msg(show_message=show_messages)
+        self.msg = helper.Msg(show_message=show_messages, default_arrow="-->")
         self._device_type = "UNKNOWN"
         self._mid100_sensors = []
         self._format_spaces = ""
+
+    @property
+    def _sensor_ip(self):
+        return self._hidden_sensor_ip
+
+    @_sensor_ip.setter
+    def _sensor_ip(self, value):
+        self._hidden_sensor_ip = value
+        self.msg.sensor_ip = value
+
+    @property
+    def _format_spaces(self):
+        return self._hidden_format_spaces
+
+    @_format_spaces.setter
+    def _format_spaces(self, value):
+        self._hidden_format_spaces = value
+        self.msg.format_spaces = value
 
     def _re_init(self):
 
@@ -319,16 +337,16 @@ class OpenPyLivox:
         # self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent lidar disconnect request")
         # TODO: Put into logging
         if response == 1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to disconnect")
+            self.msg.prefix_print("     FAILED to disconnect")
         elif response == -1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect disconnect response")
+            self.msg.prefix_print("     incorrect disconnect response")
 
     def _reboot_sensor(self):
         response = self.send_command_receive_ack(SDKDefs.CMD_REBOOT, "General", 10)
         if response == 1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to reboot")
+            self.msg.prefix_print("     FAILED to reboot")
         elif response == -1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect reboot response")
+            self.msg.prefix_print("     incorrect reboot response")
 
     def _query(self):
         response, data = self.send_command_receive_data(SDKDefs.CMD_QUERY, "General", 2, 20)
@@ -341,9 +359,9 @@ class OpenPyLivox:
             self._firmware = aa + "." + bb + "." + cc + dd
             # self.msg.print(f"Firmware version is {self._firmware}")
         elif response == 1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to receive query results")
+            self.msg.prefix_print("     FAILED to receive query results")
         elif response == -1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect query response")
+            self.msg.prefix_print("     incorrect query response")
 
     def _info(self, bin_data):
 
@@ -730,7 +748,7 @@ class OpenPyLivox:
         response = self.send_command_receive_ack(SDKDefs.CMD_LIDAR_START, "Lidar", 0)
         self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent lidar spin up request")
         if response == 1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to spin up the lidar")
+            self.msg.prefix_print("     FAILED to spin up the lidar")
         elif response == 2:
             self.msg.print("   " + self._sensor_ip + self._format_spaces +
                            "   -->     lidar is spinning up, please wait...")
@@ -760,7 +778,7 @@ class OpenPyLivox:
                     stopper = False
 
             if stopper:
-                self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     lidar is ready")
+                self.msg.prefix_print("     lidar is ready")
                 for i in range(len(self._mid100_sensors)):
                     if self._mid100_sensors[i]._showMessages:
                         print("   " + self._mid100_sensors[i]._sensor_ip + self._mid100_sensors[i]._format_spaces +
@@ -772,7 +790,7 @@ class OpenPyLivox:
         response = self.send_command_receive_ack(SDKDefs.CMD_LIDAR_POWERSAVE, "Lidar", 0)
         self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent lidar spin down request")
         if response == 1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to spin down the lidar")
+            self.msg.prefix_print("     FAILED to spin down the lidar")
         if response == 0:
             pass
         elif response == -1:
@@ -788,7 +806,7 @@ class OpenPyLivox:
         response = self.send_command_receive_ack(SDKDefs.CMD_LIDAR_START, "Lidar", 0)
         self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent lidar stand-by request")
         if response == 1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to set lidar to stand-by")
+            self.msg.prefix_print("     FAILED to set lidar to stand-by")
         elif response == -1:
             self.msg.print("   " + self._sensor_ip + self._format_spaces +
                            "   -->     incorrect lidar stand-by response")
@@ -831,7 +849,7 @@ class OpenPyLivox:
                         self.msg.print("   " + self._sensor_ip + self._format_spaces +
                                        "   -->     incorrect start data stream response")
             else:
-                self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     data stream already started")
+                self.msg.prefix_print("     data stream already started")
         else:
             self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
 
@@ -844,7 +862,7 @@ class OpenPyLivox:
             response = self.send_command_receive_ack(SDKDefs.CMD_DATA_START, "General", 4)
             self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent start data stream request")
             if response == 1:
-                self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to start data stream")
+                self.msg.prefix_print("     FAILED to start data stream")
                 if self._capture_stream is not None:
                     self._capture_stream.stop()
                 time.sleep(0.1)
@@ -855,7 +873,7 @@ class OpenPyLivox:
                 self.msg.print("   " + self._sensor_ip + self._format_spaces +
                                "   -->     incorrect start data stream response")
         else:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     data stream already started")
+            self.msg.prefix_print("     data stream already started")
 
     @deprecated(version='1.1.0', reason="You should use .dataStart_RT_B() instead")
     def dataStart_RT(self):
@@ -873,7 +891,7 @@ class OpenPyLivox:
             if response == 0:
                 self._is_data = True
             elif response == 1:
-                self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to start data stream")
+                self.msg.prefix_print("     FAILED to start data stream")
                 if self._capture_stream is not None:
                     self._capture_stream.stop()
                 time.sleep(0.1)
@@ -883,7 +901,7 @@ class OpenPyLivox:
                                "   -->     incorrect start data stream response")
 
         else:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     data stream already started")
+            self.msg.prefix_print("     data stream already started")
 
     def dataStart_RT_B(self):
         self._data_start_rt_b()
@@ -892,12 +910,12 @@ class OpenPyLivox:
 
     def _data_stop(self):
         if not self._is_data:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     data stream already stopped")
+            self.msg.prefix_print("     data stream already stopped")
             return
         response = self.send_command_receive_ack(SDKDefs.CMD_DATA_STOP, "General", 4)
         self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent stop data stream request")
         if response == 1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to stop data stream")
+            self.msg.prefix_print("     FAILED to stop data stream")
         elif response == -1:
             self.msg.print("   " + self._sensor_ip + self._format_spaces +
                            "   -->     incorrect stop data stream response")
@@ -1231,7 +1249,7 @@ class OpenPyLivox:
             return
 
         if response == 1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to set lidar mode value")
+            self.msg.prefix_print("     FAILED to set lidar mode value")
         elif response == -1:
             self.msg.print("   " + self._sensor_ip + self._format_spaces +
                            "   -->     incorrect set lidar mode response")
@@ -1342,62 +1360,44 @@ class OpenPyLivox:
                     self._capture_stream.stop()
                 self._is_writing = False
 
-    # TODO: Refactor
-    def _saveDataToFile(self, file_path_and_name, secs_to_wait, duration):
-
+    def _save_data_to_file(self, file_path_and_name, secs_to_wait, duration):
         if self._is_connected:
             if self._is_data:
                 if self._firmware != "UNKNOWN":
-                    try:
+                    if self._firmware in SDKDefs.SPECIAL_FIRMWARE_TYPE_DICT.keys():
                         firmware_type = SDKDefs.SPECIAL_FIRMWARE_TYPE_DICT[self._firmware]
-                    except:
+                    else:
                         firmware_type = 1
 
                     if duration < 0:
-                        self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                                       "   -->     * ISSUE: saving data, negative duration")
+                        self.msg.prefix_print("     * ISSUE: saving data, negative duration")
+                    elif duration >= 126230400:  # max duration = 4 years - 1 sec
+                        self.msg.prefix_print("     * ISSUE: saving data, duration too big")
+                    elif secs_to_wait < 0:
+                        self.msg.prefix_print("     * ISSUE: saving data, negative time to wait")
+                    elif secs_to_wait > 15 * 60:  # max time to wait = 15 mins
+                        self.msg.prefix_print("     * ISSUE: saving data, time to wait too big")
+                    elif file_path_and_name == "":
+                        self.msg.prefix_print("     * ISSUE: saving data, file path and name missing")
                     else:
-                        # max duration = 4 years - 1 sec
-                        if duration >= 126230400:
-                            self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                                           "   -->     * ISSUE: saving data, duration too big")
-                        else:
-
-                            if secs_to_wait < 0:
-                                self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                                               "   -->     * ISSUE: saving data, negative time to wait")
-                            else:
-                                # max time to wait = 15 mins
-                                if secs_to_wait > 900:
-                                    self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                                                   "   -->     * ISSUE: saving data, time to wait too big")
-                                else:
-
-                                    if file_path_and_name == "":
-                                        self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                                                       "   -->     * ISSUE: saving data, file path and name missing")
-                                    else:
-
-                                        self._is_writing = True
-                                        self._capture_stream.file_path_and_name = file_path_and_name
-                                        self._capture_stream.secs_to_wait = secs_to_wait
-                                        self._capture_stream.duration = duration
-                                        self._capture_stream.firmware_type = firmware_type
-                                        self._capture_stream._show_messages = self._show_messages
-                                        time.sleep(0.1)
-                                        self._capture_stream.is_capturing = True
+                        self._is_writing = True
+                        self._capture_stream.file_path_and_name = file_path_and_name
+                        self._capture_stream.secs_to_wait = secs_to_wait
+                        self._capture_stream.duration = duration
+                        self._capture_stream.firmware_type = firmware_type
+                        self._capture_stream._show_messages = self._show_messages
+                        time.sleep(0.1)
+                        self._capture_stream.is_capturing = True
                 else:
-                    self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                                   "   -->     unknown firmware version")
+                    self.msg.prefix_print("     unknown firmware version")
             else:
-                self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                               "   -->     WARNING: data stream not started, no data file created")
+                self.msg.prefix_print("     WARNING: data stream not started, no data file created")
 
     def saveDataToFile(self, file_path_and_name, secs_to_wait, duration):
         path_file = Path(file_path_and_name)
         filename = path_file.stem
         extension = path_file.suffix
-        self._saveDataToFile(file_path_and_name, secs_to_wait, duration)
+        self._save_data_to_file(file_path_and_name, secs_to_wait, duration)
         for i in range(len(self._mid100_sensors)):
             new_file = ""
             if i == 0:
@@ -1405,7 +1405,7 @@ class OpenPyLivox:
             elif i == 1:
                 new_file = filename + "_R" + extension
 
-            self._mid100_sensors[i]._saveDataToFile(new_file, secs_to_wait, duration)
+            self._mid100_sensors[i]._save_data_to_file(new_file, secs_to_wait, duration)
 
     def _close_file(self):
         if self._is_connected:
@@ -1484,7 +1484,7 @@ class OpenPyLivox:
 
     def serialNumber(self):
         if self._is_connected:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     Serial # " + self._serial)
+            self.msg.prefix_print(f"     Serial # {self._serial}")
 
             return self._serial
 
