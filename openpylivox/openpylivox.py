@@ -471,7 +471,7 @@ class OpenPyLivox:
         else:
             print("*** ERROR: Failed to auto determine computer IP address ***")
 
-    # TODO: Refactor. But holy shit this looks like hell.
+    # TODO: Refactor
     def connect(self, computer_ip, sensor_ip, data_port, cmd_port, imu_port, sensor_name_override=""):
 
         num_found = 0
@@ -807,6 +807,7 @@ class OpenPyLivox:
         for i in range(len(self._mid100_sensors)):
             self._mid100_sensors[i]._lidar_stand_by()
 
+    #TODO: Test if refactor worked. Further refactoring to be done as well.
     @deprecated(version='1.0.1', reason="You should use .dataStart_RT_B() instead")
     def dataStart(self):
 
@@ -816,31 +817,22 @@ class OpenPyLivox:
                                                          self._show_messages, self._format_spaces, self._device_type)
                 time.sleep(0.12)
                 self._wait_for_idle()
-                self._cmd_socket.sendto(sdk_defs.CMD_DATA_START, (self._sensor_ip, 65000))
-                self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                               "   <--     sent start data stream request")
 
-                # check for proper response from data start request
-                if select.select([self._cmd_socket], [], [], 0.1)[0]:
-                    binData, addr = self._cmd_socket.recvfrom(16)
-                    _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
+                response = self.send_command_receive_ack(sdk_defs.CMD_DATA_START, "General", 4)
+                self.msg.prefix_print("sent start data stream request", arrow="<--")
 
-                    if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "4":
-                        ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
-                        if ret_code == 1:
-                            self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                                           "   -->     FAILED to start data stream")
-                            if self._capture_stream is not None:
-                                self._capture_stream.stop()
-                            time.sleep(0.1)
-                            self._is_data = False
-                        else:
-                            self._is_data = True
-                    else:
-                        self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                                       "   -->     incorrect start data stream response")
+                if response == 0:
+                    self._is_data = True
+                elif response == 1:
+                    self.msg.prefix_print("FAILED to start data stream")
+                    if self._capture_stream is not None:
+                        self._capture_stream.stop()
+                    time.sleep(0.1)
+                    self._is_data = False
+                elif response == -1:
+                    self.msg.prefix_print("incorrect start data stream response")
             else:
-                self.msg.prefix_print("     data stream already started")
+                self.msg.prefix_print("data stream already started")
         else:
             self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
 
@@ -851,9 +843,9 @@ class OpenPyLivox:
             time.sleep(0.12)
 
             response = self.send_command_receive_ack(sdk_defs.CMD_DATA_START, "General", 4)
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent start data stream request")
             if response == 1:
-                self.msg.prefix_print("     FAILED to start data stream")
+                self.msg.prefix_print("sent start data stream request", arrow="<--")
+                self.msg.prefix_print("FAILED to start data stream")
                 if self._capture_stream is not None:
                     self._capture_stream.stop()
                 time.sleep(0.1)
@@ -861,8 +853,7 @@ class OpenPyLivox:
             elif response == 0:
                 self._is_data = True
             elif response == -1:
-                self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                               "   -->     incorrect start data stream response")
+                self.msg.prefix_print("incorrect start data stream response")
         else:
             self.msg.prefix_print("     data stream already started")
 
@@ -927,6 +918,7 @@ class OpenPyLivox:
             self.msg.print("   " + self._sensor_ip + self._format_spaces +
                            "   -->     FAILED to change to dynamic IP (DHCP assigned)")
 
+    # TODO: Refactor to use send_command
     def setStaticIP(self, ip_address):
 
         if self._is_connected:
@@ -1070,6 +1062,7 @@ class OpenPyLivox:
         elif response == -1:
             self.msg.prefix_print("incorrect set extrinsic parameters response")
 
+    # TODO: Refactor to use send_command
     def _update_utc(self, year, month, day, hour, micro_sec):
 
         if self._is_connected:
@@ -1167,6 +1160,7 @@ class OpenPyLivox:
         for i in range(len(self._mid100_sensors)):
             self._mid100_sensors[i]._set_fan(on_off)
 
+    # TODO: Refactor to use send_command
     def _get_fan(self):
 
         if self._is_connected:
@@ -1229,6 +1223,7 @@ class OpenPyLivox:
         elif response == -1:
             self.msg.prefix_print("incorrect set IMU data push response")
 
+    # TODO: Refactor to use send_command
     def getIMUdataPush(self):
 
         if self._is_connected:
