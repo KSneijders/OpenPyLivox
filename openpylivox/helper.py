@@ -214,3 +214,7 @@ def get_timestamp(data_pc, timestamp_type):
         # TODO: check and adjust for hour, day, month and year crossovers
 
     return timestamp_sec
+
+
+def transform_defines(b_string, decoding='ascii'):
+    return bytes.fromhex(b_string.decode(decoding))
