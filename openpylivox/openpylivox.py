@@ -67,12 +67,12 @@ class OpenPyLivox:
         self._serial = "UNKNOWN"
         self._ip_range_code = 0
         self._computer_ip = ""
+        self.msg = helper.Msg(show_message=show_messages, default_arrow="-->")
         self._sensor_ip = ""
         self._data_port = -1
         self._cmd_port = -1
         self._imu_port = -1
         self._init_show_messages = show_messages
-        self.msg = helper.Msg(show_message=show_messages, default_arrow="-->")
         self._device_type = "UNKNOWN"
         self._mid100_sensors = []
         self._format_spaces = ""
