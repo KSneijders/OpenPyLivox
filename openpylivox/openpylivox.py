@@ -1131,31 +1131,16 @@ class OpenPyLivox:
         for i in range(len(self._mid100_sensors)):
             self._mid100_sensors[i]._set_fan(on_off)
 
-    # TODO: Refactor to use send_command
     def _get_fan(self):
-
-        if self._is_connected:
-            self._wait_for_idle()
-
-            self._cmd_socket.sendto(sdk_defs.CMD_GET_FAN, (self._sensor_ip, 65000))
-            self.msg.prefix_print("sent get fan state request", arrow="<--")
-
-            # check for proper response from get fan request
-            if select.select([self._cmd_socket], [], [], 0.1)[0]:
-                binData, addr = self._cmd_socket.recvfrom(17)
-                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
-
-                if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "5":
-                    ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
-                    if ret_code == 1:
-                        self.msg.prefix_print("FAILED to get fan state value")
-                    elif ret_code == 0:
-                        value = struct.unpack('<B', binData[12:13])[0]
-                        print("   " + self._sensor_ip + self._format_spaces + "   -->     fan state: " + str(value))
-                else:
-                    self.msg.prefix_print("incorrect get fan state response")
-        else:
-            self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
+        response, data = self.send_command_receive_data(sdk_defs.CMD_GET_FAN, "Lidar", 5)
+        self.msg.prefix_print("sent get fan state request", arrow="<--")
+        if response == 0:
+            value = struct.unpack('<B', data[12:13])[0]
+            print("   " + self._sensor_ip + self._format_spaces + "   -->     fan state: " + str(value))
+        elif response == 1:
+            self.msg.prefix_print("FAILED to get fan state value")
+        elif response == -1:
+            self.msg.prefix_print("incorrect get fan state response")
 
     def getFan(self):
         self._get_fan()
@@ -1194,32 +1179,16 @@ class OpenPyLivox:
         elif response == -1:
             self.msg.prefix_print("incorrect set IMU data push response")
 
-    # TODO: Refactor to use send_command
     def getIMUdataPush(self):
-
-        if self._is_connected:
-            self._wait_for_idle()
-
-            self._cmd_socket.sendto(sdk_defs.CMD_GET_IMU, (self._sensor_ip, 65000))
-            self.msg.prefix_print("sent get IMU push state request", arrow="<--")
-
-            # check for proper response from get IMU request
-            if select.select([self._cmd_socket], [], [], 0.1)[0]:
-                bin_data, addr = self._cmd_socket.recvfrom(17)
-                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, bin_data)
-
-                if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "9":
-                    ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
-                    if ret_code == 1:
-                        self.msg.prefix_print("FAILED to get IMU push state value")
-                    elif ret_code == 0:
-                        value = struct.unpack('<B', bin_data[12:13])[0]
-                        print("   " + self._sensor_ip + self._format_spaces +
-                              "   -->     IMU push state: " + str(value))
-                else:
-                    self.msg.prefix_print("incorrect get IMU push state response")
-        else:
-            self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
+        response, data = self.send_command_receive_data(sdk_defs.CMD_GET_IMU, "Lidar", 9)
+        self.msg.prefix_print("sent get IMU push state request", arrow="<--")
+        if response == 0:
+            value = struct.unpack('<B', data[12:13])[0]
+            self.msg.prefix_print("IMU push state: " + str(value))
+        elif response == 1:
+            self.msg.prefix_print("FAILED to get IMU push state value")
+        elif response == -1:
+            self.msg.prefix_print("incorrect get IMU push state response")
 
     @deprecated(version='1.0.2', reason="You should use saveDataToFile instead")
     def saveDataToCSV(self, file_path_and_name, secs_to_wait, duration):
