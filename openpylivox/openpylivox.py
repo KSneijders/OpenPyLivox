@@ -918,7 +918,6 @@ class OpenPyLivox:
             self.msg.print("   " + self._sensor_ip + self._format_spaces +
                            "   -->     FAILED to change to dynamic IP (DHCP assigned)")
 
-    # TODO: Refactor to use send_command
     def setStaticIP(self, ip_address):
 
         if self._is_connected:
@@ -945,34 +944,17 @@ class OpenPyLivox:
                 bin_string = bytes(cmd_string, encoding='utf-8')
 
                 static_ip_request = bytes.fromhex((bin_string).decode('ascii'))
-                self._wait_for_idle()
-                self._cmd_socket.sendto(static_ip_request, (self._sensor_ip, 65000))
 
-                # check for proper response from static IP request
-                if select.select([self._cmd_socket], [], [], 0.1)[0]:
-                    bin_data, addr = self._cmd_socket.recvfrom(16)
-                    _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, bin_data)
+                response = self.send_command_receive_ack(static_ip_request, "General", 8)
+                if response == 0:
+                    self.msg.print("Changed IP from " + self._sensor_ip + " to a static IP of " + formatted_ip)
+                    self.disconnect()
 
-                    if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "8":
-                        ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
-
-                        if ret_code == 0:
-                            self.msg.print("Changed IP from " + self._sensor_ip + " to a static IP of " + formatted_ip)
-                            self.disconnect()
-
-                            self.msg.print("\n********** PROGRAM ENDED - MUST REBOOT SENSOR **********\n")
-                            sys.exit(5)
-                        else:
-                            self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                                           "   -->     FAILED to change static IP (must be " + ip_range + ")")
-                    else:
-                        self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                                       "   -->     FAILED to change static IP (must be " + ip_range + ")")
-            else:
-                self.msg.print("   " + self._sensor_ip + self._format_spaces +
-                               "   -->     FAILED to change static IP (must be " + ip_range + ")")
-        else:
-            self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
+                    self.msg.print("\n********** PROGRAM ENDED - MUST REBOOT SENSOR **********\n")
+                    sys.exit(5)
+                else:
+                    self.msg.print("   " + self._sensor_ip + self._format_spaces +
+                                   "   -->     FAILED to change static IP (must be " + ip_range + ")")
 
     def _set_cartesian_cs(self):
         response = self.send_command_receive_ack(sdk_defs.CMD_CARTESIAN_CS, "General", 5)
@@ -1051,7 +1033,7 @@ class OpenPyLivox:
         crc32checksum = helper.crc32from_str(bin_string)
         cmd_string += crc32checksum
         bin_string = bytes(cmd_string, encoding='utf-8')
-        set_ext_values = bytes.fromhex((bin_string).decode('ascii'))
+        set_ext_values = bytes.fromhex(bin_string.decode('ascii'))
 
         response = self.send_command_receive_ack(set_ext_values, "Lidar", 1)
         self.msg.prefix_print("sent set extrinsic parameters request", arrow="<--")
@@ -1062,7 +1044,6 @@ class OpenPyLivox:
         elif response == -1:
             self.msg.prefix_print("incorrect set extrinsic parameters response")
 
-    # TODO: Refactor to use send_command
     def _update_utc(self, year, month, day, hour, micro_sec):
 
         if self._is_connected:
@@ -1099,25 +1080,15 @@ class OpenPyLivox:
             crc32checksum = helper.crc32from_str(bin_string)
             cmd_string += crc32checksum
             bin_string = bytes(cmd_string, encoding='utf-8')
-            set_utc_values = bytes.fromhex((bin_string).decode('ascii'))
+            set_utc_values = bytes.fromhex(bin_string.decode('ascii'))
 
-            self._wait_for_idle()
-            self._cmd_socket.sendto(set_utc_values, (self._sensor_ip, 65000))
-            self.msg.prefix_print("sent update UTC request", arrow="<--")
-
-            # check for proper response from update UTC request
-            if select.select([self._cmd_socket], [], [], 0.1)[0]:
-                bin_data, addr = self._cmd_socket.recvfrom(16)
-                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, bin_data)
-
-                if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "10":
-                    ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
-                    if ret_code == 1:
-                        self.msg.prefix_print("FAILED to update UTC values")
-                else:
-                    self.msg.prefix_print("incorrect update UTC values response")
-        else:
-            self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
+            response = self.send_command_receive_ack(set_utc_values, "Lidar", 10)
+            if response == 0:
+                self.msg.prefix_print("Updated UTC value")
+            elif response == 1:
+                self.msg.prefix_print("FAILED to update UTC values")
+            elif response == -1:
+                self.msg.prefix_print("incorrect update UTC values response")
 
     def updateUTC(self, year, month, day, hour, micro_sec):
         self._update_utc(year, month, day, hour, micro_sec)
