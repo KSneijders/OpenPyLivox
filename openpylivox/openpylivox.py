@@ -19,7 +19,7 @@ Change Log:
     - v1.0.1 released - May 27th 2020
     - v1.0.2 and v1.0.3 released - May 29th 2020
     - v1.1.0 released - Sept. 11th 2020 (NEVER FORGET!)
-    
+
 """
 
 # standard modules
@@ -42,7 +42,7 @@ from openpylivox import helper
 from openpylivox.data_capture_thread import DataCaptureThread
 from openpylivox.heartbeat_thread import HeartbeatThread
 from openpylivox.helper import _parse_resp
-import openpylivox.LivoxSDKDefines as sdkdefs
+import openpylivox.livox_sdk_defines as sdk_defs
 
 
 class OpenPyLivox:
@@ -67,16 +67,34 @@ class OpenPyLivox:
         self._serial = "UNKNOWN"
         self._ip_range_code = 0
         self._computer_ip = ""
+        self.msg = helper.Msg(show_message=show_messages, default_arrow="-->")
         self._sensor_ip = ""
         self._data_port = -1
         self._cmd_port = -1
         self._imu_port = -1
         self._init_show_messages = show_messages
-        self.msg = helper.Msg(show_message=show_messages)
         self._device_type = "UNKNOWN"
         self._mid100_sensors = []
         self._format_spaces = ""
         self._target_output_queue = None
+
+    @property
+    def _sensor_ip(self):
+        return self._hidden_sensor_ip
+
+    @_sensor_ip.setter
+    def _sensor_ip(self, value):
+        self._hidden_sensor_ip = value
+        self.msg.sensor_ip = value
+
+    @property
+    def _format_spaces(self):
+        return self._hidden_format_spaces
+
+    @_format_spaces.setter
+    def _format_spaces(self, value):
+        self._hidden_format_spaces = value
+        self.msg.format_spaces = value
 
     def _re_init(self):
 
@@ -194,39 +212,39 @@ class OpenPyLivox:
 
         if found_device:
 
-            readData = True
-            while readData:
+            read_data = True
+            while read_data:
 
-                binData, addr = server_sock_init.recvfrom(34)
+                bin_data, addr = server_sock_init.recvfrom(34)
 
                 if len(addr) == 2:
                     if addr[1] == 65000:
                         if len(ips) == 0:
-                            goodData, cmdMessage, dataMessage, device_serial, typeMessage, ipRangeCode = self._info(
-                                binData)
-                            sensor_types.append(typeMessage)
+                            good_data, cmd_message, data_message, device_serial, type_message, ip_range_code = \
+                                self._info(bin_data)
+                            sensor_types.append(type_message)
                             ips.append(self._check_ip(addr[0]))
                             serials.append(device_serial)
-                            ip_range_codes.append(ipRangeCode)
+                            ip_range_codes.append(ip_range_code)
 
                         else:
-                            existsAlready = False
+                            exists_already = False
                             for i in range(0, len(ips)):
                                 if addr[0] == ips[i]:
-                                    existsAlready = True
-                            if existsAlready:
-                                readData = False
+                                    exists_already = True
+                            if exists_already:
+                                read_data = False
                                 break
                             else:
-                                goodData, cmdMessage, dataMessage, device_serial, typeMessage, ipRangeCode = self._info(
-                                    binData)
-                                sensor_types.append(typeMessage)
+                                good_data, cmd_message, data_message, device_serial, type_message, ip_range_code = \
+                                    self._info(bin_data)
+                                sensor_types.append(type_message)
                                 ips.append(self._check_ip(addr[0]))
                                 serials.append(device_serial)
-                                ip_range_codes.append(ipRangeCode)
+                                ip_range_codes.append(ip_range_code)
 
                 else:
-                    readData = False
+                    read_data = False
 
         server_sock_init.close()
         time.sleep(0.2)
@@ -272,16 +290,17 @@ class OpenPyLivox:
             hex_string += str(binascii.hexlify(struct.pack(type_array[index], data_array[index])))[2:-1]
         return hex_string
 
-    def send_command_receive_ack(self, command, expected_command_set, expected_command_id):
-        if self._is_connected:
-            self._wait_for_idle()
+    def send_command_receive_ack(self, command, expected_command_set, expected_command_id, ignore_connection=False):
+        if self._is_connected or ignore_connection:
+            if not ignore_connection:
+                self._wait_for_idle()
             self._cmd_socket.sendto(command, (self._sensor_ip, 65000))
 
             # check for proper response from lidar start request
             if select.select([self._cmd_socket], [], [], 0.1)[0]:
-                binData, addr = self._cmd_socket.recvfrom(16)
-                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
-                # self.msg.print(ack + " / " + cmd_set + " / " + cmd_id)  # TODO: Comment back in for logging
+                bin_data, addr = self._cmd_socket.recvfrom(16)
+                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, bin_data)
+                # self.msg.print(ack + " / " + cmd_set + " / " + cmd_id)  # TODO: Put into logging
                 if ack == "ACK (response)" and cmd_set == expected_command_set and cmd_id == str(expected_command_id):
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     return ret_code
@@ -291,17 +310,17 @@ class OpenPyLivox:
             self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
             return -2
 
-    def send_command_receive_data(self, command, expected_command_set, expected_command_id):
+    def send_command_receive_data(self, command, expected_command_set, expected_command_id, length_bytes):
         if self._is_connected:
             self._wait_for_idle()
             self._cmd_socket.sendto(command, (self._sensor_ip, 65000))
 
             # check for proper response from read extrinsics request
             if select.select([self._cmd_socket], [], [], 0.1)[0]:
-                bin_data, addr = self._cmd_socket.recvfrom(40)
+                bin_data, addr = self._cmd_socket.recvfrom(length_bytes)
                 _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, bin_data)
 
-                if ack == "ACK (response)" and cmd_set == expected_command_set and cmd_id == expected_command_id:
+                if ack == "ACK (response)" and cmd_set == expected_command_set and cmd_id == str(expected_command_id):
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
                     return ret_code, bin_data
                 else:
@@ -316,144 +335,136 @@ class OpenPyLivox:
             time.sleep(0.1)
 
     def _disconnect_sensor(self):
-        response = self.send_command_receive_ack(sdkdefs.CMD_DISCONNECT, "General", 6)
-        # self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent lidar disconnect request")  # TODO: Proper logging
+        response = self.send_command_receive_ack(sdk_defs.CMD_DISCONNECT, "General", 6)
+        # self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent lidar disconnect request")
+        # TODO: Put into logging
         if response == 1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to disconnect")
+            self.msg.prefix_print("     FAILED to disconnect")
         elif response == -1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect disconnect response")
+            self.msg.prefix_print("     incorrect disconnect response")
 
     def _reboot_sensor(self):
-        response = self.send_command_receive_ack(sdkdefs.CMD_REBOOT, "General", 10)
+        response = self.send_command_receive_ack(sdk_defs.CMD_REBOOT, "General", 10)
         if response == 1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to reboot")
+            self.msg.prefix_print("     FAILED to reboot")
         elif response == -1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect reboot response")
+            self.msg.prefix_print("     incorrect reboot response")
 
     def _query(self):
-        self._wait_for_idle()
-        self._cmd_socket.sendto(sdkdefs.CMD_QUERY, (self._sensor_ip, 65000))
+        response, data = self.send_command_receive_data(sdk_defs.CMD_QUERY, "General", 2, 20)
+        if response == 0:
+            _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, data)
+            aa = str(int.from_bytes(ret_code_bin[1], byteorder='little')).zfill(2)
+            bb = str(int.from_bytes(ret_code_bin[2], byteorder='little')).zfill(2)
+            cc = str(int.from_bytes(ret_code_bin[3], byteorder='little')).zfill(2)
+            dd = str(int.from_bytes(ret_code_bin[4], byteorder='little')).zfill(2)
+            self._firmware = aa + "." + bb + "." + cc + dd
+            # self.msg.print(f"Firmware version is {self._firmware}")
+        elif response == 1:
+            self.msg.prefix_print("     FAILED to receive query results")
+        elif response == -1:
+            self.msg.prefix_print("     incorrect query response")
 
-        # check for proper response from query request
-        if select.select([self._cmd_socket], [], [], 0.1)[0]:
+    def _info(self, bin_data):
 
-            binData, addr = self._cmd_socket.recvfrom(20)
-            _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
+        good_data, cmd_message, data_message, data_id, data_bytes = _parse_resp(self._show_messages, bin_data)
+        ip_range_code = None
+        device_serial, type_message = "", ""
 
-            if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "2":
-                ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
-                if ret_code == 1:
-                    self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to receive query results")
-                elif ret_code == 0:
-                    AA = str(int.from_bytes(ret_code_bin[1], byteorder='little')).zfill(2)
-                    BB = str(int.from_bytes(ret_code_bin[2], byteorder='little')).zfill(2)
-                    CC = str(int.from_bytes(ret_code_bin[3], byteorder='little')).zfill(2)
-                    DD = str(int.from_bytes(ret_code_bin[4], byteorder='little')).zfill(2)
-                    self._firmware = AA + "." + BB + "." + CC + DD
-            else:
-                self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect query response")
-
-    def _info(self, binData):
-
-        goodData, cmdMessage, dataMessage, dataID, dataBytes = _parse_resp(self._show_messages, binData)
-        ipRangeCode = None
-        device_serial, typeMessage = "", ""
-
-        if goodData:
+        if good_data:
             # received broadcast message
-            if cmdMessage == "MSG (message)" and dataMessage == "General" and dataID == "0":
+            if cmd_message == "MSG (message)" and data_message == "General" and data_id == "0":
                 device_broadcast_code = ""
                 i = 0
                 for i in range(0, 16):
-                    device_broadcast_code += dataBytes[i].decode('ascii')
+                    device_broadcast_code += data_bytes[i].decode('ascii')
 
-                ipRangeCode = int(device_broadcast_code[14:15])  # used to define L,M,R sensors in the Mid-100
+                ip_range_code = int(device_broadcast_code[14:15])  # used to define L,M,R sensors in the Mid-100
                 device_serial = device_broadcast_code[:-2]
-                device_type = int.from_bytes(dataBytes[i + 1], byteorder='little')
+                device_type = int.from_bytes(data_bytes[i + 1], byteorder='little')
 
-                typeMessage = ""
                 if device_type == 0:
-                    typeMessage = "Hub    "
+                    type_message = "Hub    "
                 elif device_type == 1:
-                    typeMessage = "Mid-40 "
+                    type_message = "Mid-40 "
                 elif device_type == 2:
-                    typeMessage = "Tele-15"
+                    type_message = "Tele-15"
                 elif device_type == 3:
-                    typeMessage = "Horizon"
+                    type_message = "Horizon"
                 else:
-                    typeMessage = "UNKNOWN"
+                    type_message = "UNKNOWN"
 
-        return goodData, cmdMessage, dataMessage, device_serial, typeMessage, ipRangeCode
+        return good_data, cmd_message, data_message, device_serial, type_message, ip_range_code
 
-    def discover(self, manualComputerIP=""):
+    def discover(self, manual_computer_ip=""):
 
-        if not manualComputerIP:
+        if not manual_computer_ip:
             self._auto_computer_ip()
         else:
-            self._computer_ip = manualComputerIP
+            self._computer_ip = manual_computer_ip
 
         if self._computer_ip:
             print("\nUsing computer IP address: " + self._computer_ip + "\n")
 
-            lidarSensorIPs, serialNums, ipRangeCodes, sensorTypes = self._search_for_sensors(False)
+            lidar_sensor_ips, serial_nums, ip_range_codes, sensor_types = self._search_for_sensors(False)
 
-            unique_serialNums = []
+            unique_serial_nums = []
             unique_sensors = []
-            IP_groups = []
-            ID_groups = []
+            ip_groups = []
+            id_groups = []
 
-            for i in range(len(lidarSensorIPs)):
+            for i in range(len(lidar_sensor_ips)):
                 if i == 0:
-                    unique_serialNums.append(serialNums[i])
+                    unique_serial_nums.append(serial_nums[i])
                 else:
                     matched = False
-                    for j in range(len(unique_serialNums)):
-                        if serialNums[i] == unique_serialNums[j]:
+                    for j in range(len(unique_serial_nums)):
+                        if serial_nums[i] == unique_serial_nums[j]:
                             matched = True
                             break
                     if not matched:
-                        unique_serialNums.append(serialNums[i])
+                        unique_serial_nums.append(serial_nums[i])
 
-            for i in range(len(unique_serialNums)):
+            for i in range(len(unique_serial_nums)):
                 count = 0
-                IPs = ""
-                IDs = ""
-                for j in range(len(serialNums)):
-                    if serialNums[j] == unique_serialNums[i]:
+                ips = ""
+                ids = ""
+                for j in range(len(serial_nums)):
+                    if serial_nums[j] == unique_serial_nums[i]:
                         count += 1
-                        IPs += lidarSensorIPs[j] + ","
-                        IDs += str(ipRangeCodes[j]) + ","
+                        ips += lidar_sensor_ips[j] + ","
+                        ids += str(ip_range_codes[j]) + ","
                 if count == 1:
-                    unique_sensors.append(sensorTypes[i])
+                    unique_sensors.append(sensor_types[i])
                 elif count == 3:
                     unique_sensors.append("Mid-100")
-                IP_groups.append(IPs[:-1])
-                ID_groups.append(IDs[:-1])
+                ip_groups.append(ips[:-1])
+                id_groups.append(ids[:-1])
 
-            if len(unique_serialNums) > 0:
-                for i in range(len(unique_serialNums)):
-                    IPs_list = IP_groups[i].split(',')
-                    IDs_list = ID_groups[i].split(',')
-                    IPs_mess = ""
-                    last_IP_num = []
-                    for j in range(len(IPs_list)):
-                        last_IP_num.append(int(IPs_list[j].split('.')[3]))
-                    last_IP_num.sort()
-                    for j in range(len(last_IP_num)):
-                        for k in range(len(IPs_list)):
-                            if last_IP_num[j] == int(IPs_list[k].split('.')[3]):
-                                numspaces = " "
-                                if last_IP_num[j] < 100:
-                                    numspaces += " "
-                                if last_IP_num[j] < 10:
-                                    numspaces += " "
-                                IPs_mess += str(IPs_list[k]) + numspaces + "(ID: " + str(
-                                    IDs_list[k]) + ")\n                 "
+            if len(unique_serial_nums) > 0:
+                for i in range(len(unique_serial_nums)):
+                    ips_list = ip_groups[i].split(',')
+                    ids_list = id_groups[i].split(',')
+                    ips_mess = ""
+                    last_ip_num = []
+                    for j in range(len(ips_list)):
+                        last_ip_num.append(int(ips_list[j].split('.')[3]))
+                    last_ip_num.sort()
+                    for j in range(len(last_ip_num)):
+                        for k in range(len(ips_list)):
+                            if last_ip_num[j] == int(ips_list[k].split('.')[3]):
+                                num_spaces = " "
+                                if last_ip_num[j] < 100:
+                                    num_spaces += " "
+                                if last_ip_num[j] < 10:
+                                    num_spaces += " "
+                                ips_mess += str(ips_list[k]) + num_spaces + "(ID: " + str(
+                                    ids_list[k]) + ")\n                 "
                                 break
                     print("   *** Discovered a Livox sensor ***")
                     print("           Type: " + unique_sensors[i])
-                    print("         Serial: " + unique_serialNums[i])
-                    print("          IP(s): " + IPs_mess)
+                    print("         Serial: " + unique_serial_nums[i])
+                    print("          IP(s): " + ips_mess)
 
             else:
                 print("Did not discover any Livox sensors, check communication and power cables and network settings")
@@ -461,208 +472,205 @@ class OpenPyLivox:
         else:
             print("*** ERROR: Failed to auto determine computer IP address ***")
 
-    def connect(self, computerIP, sensorIP, dataPort, cmdPort, imuPort, sensor_name_override=""):
+    # TODO: Refactor
+    def connect(self, computer_ip, sensor_ip, data_port, cmd_port, imu_port, sensor_name_override=""):
 
-        numFound = 0
+        num_found = 0
 
         if not self._is_connected:
 
-            self._computer_ip = self._check_ip(computerIP)
-            self._sensor_ip = self._check_ip(sensorIP)
-            self._data_port = self._check_port(dataPort)
-            self._cmd_port = self._check_port(cmdPort)
-            self._imu_port = self._check_port(imuPort)
+            self._computer_ip = self._check_ip(computer_ip)
+            self._sensor_ip = self._check_ip(sensor_ip)
+            self._data_port = self._check_port(data_port)
+            self._cmd_port = self._check_port(cmd_port)
+            self._imu_port = self._check_port(imu_port)
 
-            if self._computer_ip and self._sensor_ip and self._data_port != -1 and self._cmd_port != -1 and self._imu_port != -1:
+            if self._computer_ip and self._sensor_ip and self._data_port != -1 and self._cmd_port != -1 and \
+                    self._imu_port != -1:
                 num_spaces = 15 - len(self._sensor_ip)
                 for i in range(num_spaces):
                     self._format_spaces += " "
-                unique_serialNums, unique_sensors, sensor_IPs = self._re_init()
-                numFound = len(unique_sensors)
+                self.msg.format_spaces = self._format_spaces
+                unique_serial_nums, unique_sensors, sensor_ips = self._re_init()
+                num_found = len(unique_sensors)
                 time.sleep(0.1)
 
-                for i in range(len(sensor_IPs)):
-                    if self._sensor_ip == sensor_IPs[i][0]:
-                        self._device_type = sensor_IPs[i][1]
+                for i in range(len(sensor_ips)):
+                    if self._sensor_ip == sensor_ips[i][0]:
+                        self._device_type = sensor_ips[i][1]
 
                 if sensor_name_override:
                     self._device_type = sensor_name_override
 
                 self._data_port, self._cmd_port, self._imu_port = self._bind_ports()
 
-                IP_parts = self._computer_ip.split(".")
-                IPhex = str(hex(int(IP_parts[0]))).replace('0x', '').zfill(2)
-                IPhex += str(hex(int(IP_parts[1]))).replace('0x', '').zfill(2)
-                IPhex += str(hex(int(IP_parts[2]))).replace('0x', '').zfill(2)
-                IPhex += str(hex(int(IP_parts[3]))).replace('0x', '').zfill(2)
-                dataHexAll = str(hex(int(self._data_port))).replace('0x', '').zfill(4)
-                dataHex = dataHexAll[2:] + dataHexAll[:-2]
-                cmdHexAll = str(hex(int(self._cmd_port))).replace('0x', '').zfill(4)
-                cmdHex = cmdHexAll[2:] + cmdHexAll[:-2]
-                imuHexAll = str(hex(int(self._imu_port))).replace('0x', '').zfill(4)
-                imuHex = imuHexAll[2:] + imuHexAll[:-2]
-                cmdString = "AA011900000000DC580001" + IPhex + dataHex + cmdHex + imuHex
-                binString = bytes(cmdString, encoding='utf-8')
-                crc32checksum = helper.crc32from_str(binString)
-                cmdString += crc32checksum
-                binString = bytes(cmdString, encoding='utf-8')
+                ip_parts = self._computer_ip.split(".")
+                ip_hex = str(hex(int(ip_parts[0]))).replace('0x', '').zfill(2)
+                ip_hex += str(hex(int(ip_parts[1]))).replace('0x', '').zfill(2)
+                ip_hex += str(hex(int(ip_parts[2]))).replace('0x', '').zfill(2)
+                ip_hex += str(hex(int(ip_parts[3]))).replace('0x', '').zfill(2)
+                data_hex_all = str(hex(int(self._data_port))).replace('0x', '').zfill(4)
+                data_hex = data_hex_all[2:] + data_hex_all[:-2]
+                cmd_hex_all = str(hex(int(self._cmd_port))).replace('0x', '').zfill(4)
+                cmd_hex = cmd_hex_all[2:] + cmd_hex_all[:-2]
+                imu_hex_all = str(hex(int(self._imu_port))).replace('0x', '').zfill(4)
+                imu_hex = imu_hex_all[2:] + imu_hex_all[:-2]
+                cmd_string = "AA011900000000DC580001" + ip_hex + data_hex + cmd_hex + imu_hex
+                bin_string = bytes(cmd_string, encoding='utf-8')
+                crc32checksum = helper.crc32from_str(bin_string)
+                cmd_string += crc32checksum
+                bin_string = bytes(cmd_string, encoding='utf-8')
 
-                connect_request = bytes.fromhex((binString).decode('ascii'))
-                self._cmd_socket.sendto(connect_request, (self._sensor_ip, 65000))
+                connect_request = bytes.fromhex(bin_string.decode('ascii'))
 
-                # check for proper response from connection request
-                if select.select([self._cmd_socket], [], [], 0.1)[0]:
-                    binData, addr = self._cmd_socket.recvfrom(16)
-                    _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
+                response = self.send_command_receive_ack(connect_request, "General", 1, True)
+                if response == 0:
+                    self._is_connected = True
+                    self._heartbeat = HeartbeatThread(1, self._cmd_socket, self._sensor_ip, 65000,
+                                                      sdk_defs.CMD_HEARTBEAT, self._show_messages,
+                                                      self._format_spaces)
+                    time.sleep(0.15)
+                    self._query()
+                    self.msg.sensor_ip = self._sensor_ip
 
-                    if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "1":
-                        ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
-                        if ret_code == 0:
-                            self._is_connected = True
-                            self._heartbeat = HeartbeatThread(1, self._cmd_socket, self._sensor_ip, 65000,
-                                                              sdkdefs.CMD_HEARTBEAT, self._show_messages,
-                                                              self._format_spaces)
-                            time.sleep(0.15)
-                            self._query()
-                            self.msg.print("Connected to the Livox " + self._device_type + " at IP: " + self._sensor_ip + " (ID: " + str(
-                                    self._ip_range_code) + ")")
-                        else:
-                            self.msg.print("FAILED to connect to the Livox " + self._device_type + " at IP: " + self._sensor_ip)
-                    else:
-                        self.msg.print("FAILED to connect to the Livox " + self._device_type + " at IP: " + self._sensor_ip)
+                    self.msg.print("Connected to the Livox " + self._device_type + " at IP: " +
+                                   self._sensor_ip + " (ID: " + str(self._ip_range_code) + ")")
+                else:
+                    self.msg.print("FAILED to connect to the Livox " + self._device_type + " at IP: " +
+                                   self._sensor_ip)
             else:
                 self.msg.print("Invalid connection parameter(s)")
         else:
             self.msg.print("Already connected to the Livox " + self._device_type + " at IP: " + self._sensor_ip)
 
-        return numFound
+        return num_found
 
-    def auto_connect(self, manualComputerIP=""):
+    def auto_connect(self, manual_computer_ip=""):
 
-        numFound = 0
+        num_found = 0
 
-        if not manualComputerIP:
+        if not manual_computer_ip:
             self._auto_computer_ip()
         else:
-            self._computer_ip = manualComputerIP
+            self._computer_ip = manual_computer_ip
 
         if self._computer_ip:
 
-            lidarSensorIPs, serialNums, ipRangeCodes, sensorTypes = self._search_for_sensors(False)
+            lidar_sensor_ips, serial_nums, ip_range_codes, sensor_types = self._search_for_sensors(False)
 
-            unique_serialNums = []
+            unique_serial_nums = []
             unique_sensors = []
-            IP_groups = []
-            ID_groups = []
+            ip_groups = []
+            id_groups = []
 
-            for i in range(len(lidarSensorIPs)):
+            for i in range(len(lidar_sensor_ips)):
                 if i == 0:
-                    unique_serialNums.append(serialNums[i])
+                    unique_serial_nums.append(serial_nums[i])
                 else:
                     matched = False
-                    for j in range(len(unique_serialNums)):
-                        if serialNums[i] == unique_serialNums[j]:
+                    for j in range(len(unique_serial_nums)):
+                        if serial_nums[i] == unique_serial_nums[j]:
                             matched = True
                             break
                     if not matched:
-                        unique_serialNums.append(serialNums[i])
+                        unique_serial_nums.append(serial_nums[i])
 
-            for i in range(len(unique_serialNums)):
+            for i in range(len(unique_serial_nums)):
                 count = 0
-                IPs = ""
-                IDs = ""
-                for j in range(len(serialNums)):
-                    if serialNums[j] == unique_serialNums[i]:
+                ips = ""
+                ids = ""
+                for j in range(len(serial_nums)):
+                    if serial_nums[j] == unique_serial_nums[i]:
                         count += 1
-                        IPs += lidarSensorIPs[j] + ","
-                        IDs += str(ipRangeCodes[j]) + ","
+                        ips += lidar_sensor_ips[j] + ","
+                        ids += str(ip_range_codes[j]) + ","
                 if count == 1:
-                    unique_sensors.append(sensorTypes[i])
+                    unique_sensors.append(sensor_types[i])
                 elif count == 2:
                     unique_sensors.append("NA")
                 elif count == 3:
                     unique_sensors.append("Mid-100")
-                IP_groups.append(IPs[:-1])
-                ID_groups.append(IDs[:-1])
+                ip_groups.append(ips[:-1])
+                id_groups.append(ids[:-1])
 
             status_message = ""
 
-            if len(unique_serialNums) > 0:
+            if len(unique_serial_nums) > 0:
                 if self._show_messages:
                     status_message = "\nUsing computer IP address: " + self._computer_ip + "\n\n"
-                for i in range(0, len(unique_serialNums)):
-                    IPs_list = IP_groups[i].split(',')
-                    IDs_list = ID_groups[i].split(',')
-                    IPs_mess = ""
-                    last_IP_num = []
-                    for j in range(len(IPs_list)):
-                        last_IP_num.append(int(IPs_list[j].split('.')[3]))
-                    last_IP_num.sort()
-                    for j in range(len(last_IP_num)):
-                        for k in range(len(IPs_list)):
-                            if last_IP_num[j] == int(IPs_list[k].split('.')[3]):
-                                numspaces = " "
-                                if last_IP_num[j] < 100:
-                                    numspaces += " "
-                                if last_IP_num[j] < 10:
-                                    numspaces += " "
-                                IPs_mess += str(IPs_list[k]) + numspaces + "(ID: " + str(
-                                    IDs_list[k]) + ")\n                 "
+                for i in range(0, len(unique_serial_nums)):
+                    ips_list = ip_groups[i].split(',')
+                    ids_list = id_groups[i].split(',')
+                    ips_mess = ""
+                    last_ip_num = []
+                    for j in range(len(ips_list)):
+                        last_ip_num.append(int(ips_list[j].split('.')[3]))
+                    last_ip_num.sort()
+                    for j in range(len(last_ip_num)):
+                        for k in range(len(ips_list)):
+                            if last_ip_num[j] == int(ips_list[k].split('.')[3]):
+                                num_spaces = " "
+                                if last_ip_num[j] < 100:
+                                    num_spaces += " "
+                                if last_ip_num[j] < 10:
+                                    num_spaces += " "
+                                ips_mess += str(ips_list[k]) + num_spaces + "(ID: " + str(
+                                    ids_list[k]) + ")\n                 "
                                 break
                     if unique_sensors[i] != "NA":
                         status_message += "   *** Discovered a Livox sensor ***\n"
                         status_message += "           Type: " + unique_sensors[i] + "\n"
-                        status_message += "         Serial: " + unique_serialNums[i] + "\n"
-                        status_message += "          IP(s): " + IPs_mess + "\n"
+                        status_message += "         Serial: " + unique_serial_nums[i] + "\n"
+                        status_message += "          IP(s): " + ips_mess + "\n"
 
             if len(unique_sensors) > 0 and unique_sensors[0] != "NA":
                 status_message = status_message[:-1]
                 print(status_message)
                 self.msg.print("Attempting to auto-connect to the Livox " + unique_sensors[0] + " with S/N: " +
-                          unique_serialNums[0])
+                          unique_serial_nums[0])
 
                 if unique_sensors[0] == "Mid-100":
-                    sensor_IPs = None
-                    sensor_IDs = None
-                    for i in range(len(IP_groups)):
-                        ind_IPs = IP_groups[i].split(',')
-                        ind_IDs = ID_groups[i].split(',')
-                        for j in range(len(ind_IPs)):
-                            if lidarSensorIPs[0] == ind_IPs[j]:
-                                sensor_IPs = ind_IPs
-                                sensor_IDs = ind_IDs
+                    sensor_ips = None
+                    sensor_ids = None
+                    for i in range(len(ip_groups)):
+                        ind_ips = ip_groups[i].split(',')
+                        ind_ids = id_groups[i].split(',')
+                        for j in range(len(ind_ips)):
+                            if lidar_sensor_ips[0] == ind_ips[j]:
+                                sensor_ips = ind_ips
+                                sensor_ids = ind_ids
 
-                    sensorM = OpenPyLivox(self._init_show_messages)
-                    sensorR = OpenPyLivox(self._init_show_messages)
+                    sensor_m = OpenPyLivox(self._init_show_messages)
+                    sensor_r = OpenPyLivox(self._init_show_messages)
 
                     for i in range(3):
-                        if int(sensor_IDs[i]) == 1:
-                            self.connect(self._computer_ip, sensor_IPs[i], 0, 0, 0, "Mid-100 (L)")
+                        if int(sensor_ids[i]) == 1:
+                            self.connect(self._computer_ip, sensor_ips[i], 0, 0, 0, "Mid-100 (L)")
                             for j in range(3):
-                                if int(sensor_IDs[j]) == 2:
-                                    sensorM.connect(self._computer_ip, sensor_IPs[j], 0, 0, 0, "Mid-100 (M)")
-                                    self._mid100_sensors.append(sensorM)
+                                if int(sensor_ids[j]) == 2:
+                                    sensor_m.connect(self._computer_ip, sensor_ips[j], 0, 0, 0, "Mid-100 (M)")
+                                    self._mid100_sensors.append(sensor_m)
                                     for k in range(3):
-                                        if int(sensor_IDs[k]) == 3:
-                                            numFound = sensorR.connect(self._computer_ip, sensor_IPs[k], 0, 0, 0,
-                                                                       "Mid-100 (R)")
-                                            self._mid100_sensors.append(sensorR)
+                                        if int(sensor_ids[k]) == 3:
+                                            num_found = sensor_r.connect(self._computer_ip, sensor_ips[k],
+                                                                         0, 0, 0, "Mid-100 (R)")
+                                            self._mid100_sensors.append(sensor_r)
                                             break
                                     break
                             break
                 else:
                     self._show_messages = False
-                    numFound = self.connect(self._computer_ip, lidarSensorIPs[0], 0, 0, 0)
+                    num_found = self.connect(self._computer_ip, lidar_sensor_ips[0], 0, 0, 0)
                     self._device_type = unique_sensors[0]
                     self.resetShowMessages()
 
-                    self.msg.print("Connected to the Livox " + self._device_type + " at IP: " + self._sensor_ip + " (ID: " + str(
-                            self._ip_range_code) + ")")
+                    self.msg.print("Connected to the Livox " + self._device_type + " at IP: " + self._sensor_ip +
+                                   " (ID: " + str(self._ip_range_code) + ")")
 
         else:
             self.msg.print("*** ERROR: Failed to auto determine the computer IP address ***")
 
-        return numFound
+        return num_found
 
     def _disconnect(self):
 
@@ -686,7 +694,8 @@ class OpenPyLivox:
                 self.msg.print("Disconnected from the Livox " + self._device_type + " at IP: " + self._sensor_ip)
 
             except:
-                self.msg.print("*** Error trying to disconnect from the Livox " + self._device_type + " at IP: " + self._sensor_ip)
+                self.msg.print("*** Error trying to disconnect from the Livox " + self._device_type + " at IP: "
+                               + self._sensor_ip)
         else:
             self.msg.print("Not connected to the Livox " + self._device_type + " at IP: " + self._sensor_ip)
 
@@ -717,7 +726,8 @@ class OpenPyLivox:
                 self.msg.print("Rebooting the Livox " + self._device_type + " at IP: " + self._sensor_ip)
 
             except:
-                self.msg.print("*** Error trying to reboot from the Livox " + self._device_type + " at IP: " + self._sensor_ip)
+                self.msg.print("*** Error trying to reboot from the Livox " + self._device_type + " at IP: " +
+                               self._sensor_ip)
         else:
             self.msg.print("Not connected to the Livox " + self._device_type + " at IP: " + self._sensor_ip)
 
@@ -727,14 +737,16 @@ class OpenPyLivox:
             self._mid100_sensors[i]._reboot()
 
     def _lidar_spin_up(self):
-        response = self.send_command_receive_ack(sdkdefs.CMD_LIDAR_START, "Lidar", 0)
+        response = self.send_command_receive_ack(sdk_defs.CMD_LIDAR_START, "Lidar", 0)
         self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent lidar spin up request")
         if response == 1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to spin up the lidar")
+            self.msg.prefix_print("     FAILED to spin up the lidar")
         elif response == 2:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     lidar is spinning up, please wait...")
+            self.msg.print("   " + self._sensor_ip + self._format_spaces +
+                           "   -->     lidar is spinning up, please wait...")
         elif response == -1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect lidar spin up response")
+            self.msg.print("   " + self._sensor_ip + self._format_spaces +
+                           "   -->     incorrect lidar spin up response")
         else:
             print(response)
 
@@ -745,8 +757,7 @@ class OpenPyLivox:
 
         while True:
             time.sleep(0.1)
-            states = []
-            states.append(self._heartbeat.work_state)
+            states = [self._heartbeat.work_state]
 
             for i in range(len(self._mid100_sensors)):
                 states.append(self._mid100_sensors[i]._heartbeat.work_state)
@@ -759,23 +770,24 @@ class OpenPyLivox:
                     stopper = False
 
             if stopper:
-                self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     lidar is ready")
+                self.msg.prefix_print("     lidar is ready")
                 for i in range(len(self._mid100_sensors)):
-                    if self._mid100_sensors[i]._showMessages: print(
-                        "   " + self._mid100_sensors[i]._sensor_ip + self._mid100_sensors[
-                            i]._format_spaces + "   -->     lidar is ready")
+                    if self._mid100_sensors[i]._showMessages:
+                        print("   " + self._mid100_sensors[i]._sensor_ip + self._mid100_sensors[i]._format_spaces +
+                              "   -->     lidar is ready")
                 time.sleep(0.1)
                 break
 
     def _lidar_spin_down(self):
-        response = self.send_command_receive_ack(sdkdefs.CMD_LIDAR_POWERSAVE, "Lidar", 0)
+        response = self.send_command_receive_ack(sdk_defs.CMD_LIDAR_POWERSAVE, "Lidar", 0)
         self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent lidar spin down request")
         if response == 1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to spin down the lidar")
+            self.msg.prefix_print("     FAILED to spin down the lidar")
         if response == 0:
             pass
         elif response == -1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect lidar spin down response")
+            self.msg.print("   " + self._sensor_ip + self._format_spaces +
+                           "   -->     incorrect lidar spin down response")
 
     def lidarSpinDown(self):
         self._lidar_spin_down()
@@ -783,18 +795,20 @@ class OpenPyLivox:
             self._mid100_sensors[i]._lidar_spin_down()
 
     def _lidar_stand_by(self):
-        response = self.send_command_receive_ack(sdkdefs.CMD_LIDAR_START, "Lidar", 0)
+        response = self.send_command_receive_ack(sdk_defs.CMD_LIDAR_START, "Lidar", 0)
         self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent lidar stand-by request")
         if response == 1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to set lidar to stand-by")
+            self.msg.prefix_print("     FAILED to set lidar to stand-by")
         elif response == -1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect lidar stand-by response")
+            self.msg.print("   " + self._sensor_ip + self._format_spaces +
+                           "   -->     incorrect lidar stand-by response")
 
     def lidarStandBy(self):
         self._lidar_stand_by()
         for i in range(len(self._mid100_sensors)):
             self._mid100_sensors[i]._lidar_stand_by()
 
+    #TODO: Test if refactor worked. Further refactoring to be done as well.
     @deprecated(version='1.0.1', reason="You should use .dataStart_RT_B() instead")
     def dataStart(self):
 
@@ -804,63 +818,45 @@ class OpenPyLivox:
                                                          self._show_messages, self._format_spaces, self._device_type)
                 time.sleep(0.12)
                 self._wait_for_idle()
-                self._cmd_socket.sendto(sdkdefs.CMD_DATA_START, (self._sensor_ip, 65000))
-                self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent start data stream request")
 
-                # check for proper response from data start request
-                if select.select([self._cmd_socket], [], [], 0.1)[0]:
-                    binData, addr = self._cmd_socket.recvfrom(16)
-                    _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
+                response = self.send_command_receive_ack(sdk_defs.CMD_DATA_START, "General", 4)
+                self.msg.prefix_print("sent start data stream request", arrow="<--")
 
-                    if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "4":
-                        ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
-                        if ret_code == 1:
-                            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to start data stream")
-                            if self._capture_stream is not None:
-                                self._capture_stream.stop()
-                            time.sleep(0.1)
-                            self._is_data = False
-                        else:
-                            self._is_data = True
-                    else:
-                        self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect start data stream response")
+                if response == 0:
+                    self._is_data = True
+                elif response == 1:
+                    self.msg.prefix_print("FAILED to start data stream")
+                    if self._capture_stream is not None:
+                        self._capture_stream.stop()
+                    time.sleep(0.1)
+                    self._is_data = False
+                elif response == -1:
+                    self.msg.prefix_print("incorrect start data stream response")
             else:
-                self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     data stream already started")
+                self.msg.prefix_print("data stream already started")
         else:
             self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
 
     def _data_start_rt(self):
+        if not self._is_data:
+            self._capture_stream = DataCaptureThread(self._sensor_ip, self._data_socket, None, "", 1, 0, 0, 0,
+                                                     self._show_messages, self._format_spaces, self._device_type)
+            time.sleep(0.12)
 
-        if self._is_connected:
-            if not self._is_data:
-                self._capture_stream = DataCaptureThread(self._sensor_ip, self._data_socket, None, "", 1, 0, 0, 0,
-                                                         self._show_messages, self._format_spaces, self._device_type)
-                time.sleep(0.12)
-                self._wait_for_idle()
-                self._cmd_socket.sendto(sdkdefs.CMD_DATA_START, (self._sensor_ip, 65000))
-                self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent start data stream request")
-
-                # check for proper response from data start request
-                if select.select([self._cmd_socket], [], [], 0.1)[0]:
-                    binData, addr = self._cmd_socket.recvfrom(16)
-                    _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
-
-                    if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "4":
-                        ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
-                        if ret_code == 1:
-                            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to start data stream")
-                            if self._capture_stream is not None:
-                                self._capture_stream.stop()
-                            time.sleep(0.1)
-                            self._is_data = False
-                        else:
-                            self._is_data = True
-                    else:
-                        self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect start data stream response")
-            else:
-                self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     data stream already started")
+            response = self.send_command_receive_ack(sdk_defs.CMD_DATA_START, "General", 4)
+            if response == 1:
+                self.msg.prefix_print("sent start data stream request", arrow="<--")
+                self.msg.prefix_print("FAILED to start data stream")
+                if self._capture_stream is not None:
+                    self._capture_stream.stop()
+                time.sleep(0.1)
+                self._is_data = False
+            elif response == 0:
+                self._is_data = True
+            elif response == -1:
+                self.msg.prefix_print("incorrect start data stream response")
         else:
-            self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
+            self.msg.prefix_print("     data stream already started")
 
     @deprecated(version='1.1.0', reason="You should use .dataStart_RT_B() instead")
     def dataStart_RT(self):
@@ -869,37 +865,26 @@ class OpenPyLivox:
             self._mid100_sensors[i]._data_start_rt()
 
     def _data_start_rt_b(self):
+        if not self._is_data:
+            self._capture_stream = DataCaptureThread(self._sensor_ip, self._data_socket, self._imu_socket, "", 2, 0, 0,
+                                                     0, self._show_messages, self._format_spaces, self._device_type)
+            time.sleep(0.12)
 
-        if self._is_connected:
-            if not self._is_data:
-                self._capture_stream = DataCaptureThread(self._sensor_ip, self._data_socket, self._imu_socket, "", 2, 0, 0,
-                                                         0, self._show_messages, self._format_spaces, self._device_type)
-                time.sleep(0.12)
-                self._wait_for_idle()
-                self._cmd_socket.sendto(sdkdefs.CMD_DATA_START, (self._sensor_ip, 65000))
-                self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent start data stream request")
+            response = self.send_command_receive_ack(sdk_defs.CMD_DATA_START, "General", 4)
+            if response == 0:
+                self._is_data = True
+            elif response == 1:
+                self.msg.prefix_print("     FAILED to start data stream")
+                if self._capture_stream is not None:
+                    self._capture_stream.stop()
+                time.sleep(0.1)
+                self._is_data = False
+            elif response == -1:
+                self.msg.print("   " + self._sensor_ip + self._format_spaces +
+                               "   -->     incorrect start data stream response")
 
-                # check for proper response from data start request
-                if select.select([self._cmd_socket], [], [], 0.1)[0]:
-                    binData, addr = self._cmd_socket.recvfrom(16)
-                    _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
-
-                    if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "4":
-                        ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
-                        if ret_code == 1:
-                            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to start data stream")
-                            if self._capture_stream is not None:
-                                self._capture_stream.stop()
-                            time.sleep(0.1)
-                            self._is_data = False
-                        else:
-                            self._is_data = True
-                    else:
-                        self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect start data stream response")
-            else:
-                self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     data stream already started")
         else:
-            self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
+            self.msg.prefix_print("     data stream already started")
 
     def dataStart_RT_B(self):
         self._data_start_rt_b()
@@ -948,14 +933,15 @@ class OpenPyLivox:
 
     def _data_stop(self):
         if not self._is_data:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     data stream already stopped")
+            self.msg.prefix_print("     data stream already stopped")
             return
-        response = self.send_command_receive_ack(sdkdefs.CMD_DATA_STOP, "General", 4)
+        response = self.send_command_receive_ack(sdk_defs.CMD_DATA_STOP, "General", 4)
         self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent stop data stream request")
         if response == 1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to stop data stream")
+            self.msg.prefix_print("     FAILED to stop data stream")
         elif response == -1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect stop data stream response")
+            self.msg.print("   " + self._sensor_ip + self._format_spaces +
+                           "   -->     incorrect stop data stream response")
 
     def dataStop(self):
         self._data_stop()
@@ -963,69 +949,56 @@ class OpenPyLivox:
             self._mid100_sensors[i]._data_stop()
 
     def setDynamicIP(self):
-        response = self.send_command_receive_ack(sdkdefs.CMD_DYNAMIC_IP, "General", 8)
+        response = self.send_command_receive_ack(sdk_defs.CMD_DYNAMIC_IP, "General", 8)
         if response == 0:
             self.msg.print("Changed IP from " + self._sensor_ip + " to dynamic IP (DHCP assigned)")
             self.disconnect()
             self.msg.print("\n********** PROGRAM ENDED - MUST REBOOT SENSOR **********\n")
             sys.exit(4)
         else:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to change to dynamic IP (DHCP assigned)")
+            self.msg.print("   " + self._sensor_ip + self._format_spaces +
+                           "   -->     FAILED to change to dynamic IP (DHCP assigned)")
 
-    def setStaticIP(self, ipAddress):
+    def setStaticIP(self, ip_address):
 
         if self._is_connected:
-            ipRange = ""
+            ip_range = ""
             if self._ip_range_code == 1:
-                ipRange = "192.168.1.11 to .80"
+                ip_range = "192.168.1.11 to .80"
             elif self._ip_range_code == 2:
-                ipRange = "192.168.1.81 to .150"
+                ip_range = "192.168.1.81 to .150"
             elif self._ip_range_code == 3:
-                ipRange = "192.168.1.151 to .220"
-            ipAddress = self._check_ip(ipAddress)
-            if ipAddress:
-                IP_parts = ipAddress.split(".")
-                IPhex1 = str(hex(int(IP_parts[0]))).replace('0x', '').zfill(2)
-                IPhex2 = str(hex(int(IP_parts[1]))).replace('0x', '').zfill(2)
-                IPhex3 = str(hex(int(IP_parts[2]))).replace('0x', '').zfill(2)
-                IPhex4 = str(hex(int(IP_parts[3]))).replace('0x', '').zfill(2)
-                formattedIP = IP_parts[0].strip() + "." + IP_parts[1].strip() + "." + IP_parts[2].strip() + "." + \
-                              IP_parts[3].strip()
-                cmdString = "AA011400000000a824000801" + IPhex1 + IPhex2 + IPhex3 + IPhex4
-                binString = bytes(cmdString, encoding='utf-8')
-                crc32checksum = helper.crc32from_str(binString)
-                cmdString += crc32checksum
-                binString = bytes(cmdString, encoding='utf-8')
+                ip_range = "192.168.1.151 to .220"
+            ip_address = self._check_ip(ip_address)
+            if ip_address:
+                ip_parts = ip_address.split(".")
+                ip_hex_1 = str(hex(int(ip_parts[0]))).replace('0x', '').zfill(2)
+                ip_hex_2 = str(hex(int(ip_parts[1]))).replace('0x', '').zfill(2)
+                ip_hex_3 = str(hex(int(ip_parts[2]))).replace('0x', '').zfill(2)
+                ip_hex_4 = str(hex(int(ip_parts[3]))).replace('0x', '').zfill(2)
+                formatted_ip = ip_parts[0].strip() + "." + ip_parts[1].strip() + "." + ip_parts[2].strip() + "." + \
+                               ip_parts[3].strip()
+                cmd_string = "AA011400000000a824000801" + ip_hex_1 + ip_hex_2 + ip_hex_3 + ip_hex_4
+                bin_string = bytes(cmd_string, encoding='utf-8')
+                crc32checksum = helper.crc32from_str(bin_string)
+                cmd_string += crc32checksum
+                bin_string = bytes(cmd_string, encoding='utf-8')
 
-                staticIP_request = bytes.fromhex((binString).decode('ascii'))
-                self._wait_for_idle()
-                self._cmd_socket.sendto(staticIP_request, (self._sensor_ip, 65000))
+                static_ip_request = bytes.fromhex((bin_string).decode('ascii'))
 
-                # check for proper response from static IP request
-                if select.select([self._cmd_socket], [], [], 0.1)[0]:
-                    binData, addr = self._cmd_socket.recvfrom(16)
-                    _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
+                response = self.send_command_receive_ack(static_ip_request, "General", 8)
+                if response == 0:
+                    self.msg.print("Changed IP from " + self._sensor_ip + " to a static IP of " + formatted_ip)
+                    self.disconnect()
 
-                    if ack == "ACK (response)" and cmd_set == "General" and cmd_id == "8":
-                        ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
-
-                        if ret_code == 0:
-                            self.msg.print("Changed IP from " + self._sensor_ip + " to a static IP of " + formattedIP)
-                            self.disconnect()
-
-                            self.msg.print("\n********** PROGRAM ENDED - MUST REBOOT SENSOR **********\n")
-                            sys.exit(5)
-                        else:
-                            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to change static IP (must be " + ipRange + ")")
-                    else:
-                        self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to change static IP (must be " + ipRange + ")")
-            else:
-                self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to change static IP (must be " + ipRange + ")")
-        else:
-            self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
+                    self.msg.print("\n********** PROGRAM ENDED - MUST REBOOT SENSOR **********\n")
+                    sys.exit(5)
+                else:
+                    self.msg.print("   " + self._sensor_ip + self._format_spaces +
+                                   "   -->     FAILED to change static IP (must be " + ip_range + ")")
 
     def _set_cartesian_cs(self):
-        response = self.send_command_receive_ack(sdkdefs.CMD_CARTESIAN_CS, "General", 5)
+        response = self.send_command_receive_ack(sdk_defs.CMD_CARTESIAN_CS, "General", 5)
         self.msg.print(
             "   " + self._sensor_ip + self._format_spaces + "   <--     sent change to Cartesian coordinates request")
         if response == 0:
@@ -1034,7 +1007,8 @@ class OpenPyLivox:
             self.msg.print(
                 "   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to set Cartesian coordinate output")
         elif response == -1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect change coordinate system response (Cartesian)")
+            self.msg.print("   " + self._sensor_ip + self._format_spaces +
+                           "   -->     incorrect change coordinate system response (Cartesian)")
 
     def setCartesianCS(self):
         self._set_cartesian_cs()
@@ -1042,14 +1016,14 @@ class OpenPyLivox:
             self._mid100_sensors[i]._set_cartesian_cs()
 
     def _set_spherical_cs(self):
-        response = self.send_command_receive_ack(sdkdefs.CMD_SPHERICAL_CS, "General", 5)
-        self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent change to Spherical coordinates request")
+        response = self.send_command_receive_ack(sdk_defs.CMD_SPHERICAL_CS, "General", 5)
+        self.msg.prefix_print("sent change to Spherical coordinates request", arrow="<--")
         if response == 0:
             self._coord_system = 1
         elif response == 1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to set Spherical coordinate output")
+            self.msg.prefix_print("FAILED to set Spherical coordinate output")
         elif response == -1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect change coordinate system response (Spherical)")
+            self.msg.prefix_print("incorrect change coordinate system response (Spherical)")
 
     def setSphericalCS(self):
         self._set_spherical_cs()
@@ -1057,8 +1031,8 @@ class OpenPyLivox:
             self._mid100_sensors[i]._set_spherical_cs()
 
     def readExtrinsic(self):
-        response, data = self.send_command_receive_data(sdkdefs.CMD_READ_EXTRINSIC, "Lidar", 2)
-        self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent read extrinsic parameters request")
+        response, data = self.send_command_receive_data(sdk_defs.CMD_READ_EXTRINSIC, "Lidar", 2, 40)
+        self.msg.prefix_print("sent read extrinsic parameters request", arrow="<--")
         if response == 0:
             self._roll = struct.unpack('<f', data[12:16])[0]
             self._pitch = struct.unpack('<f', data[16:20])[0]
@@ -1070,21 +1044,21 @@ class OpenPyLivox:
             # called only to print the extrinsic parameters to the screen if .showMessages(True)
             ack = self.extrinsicParameters()
         elif response == 1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to read extrinsic parameters")
+            self.msg.prefix_print("FAILED to read extrinsic parameters")
         elif response == -1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect read extrinsics response")
+            self.msg.prefix_print("incorrect read extrinsics response")
         elif response == -2:
             self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
 
     def setExtrinsicToZero(self):
-        response = self.send_command_receive_ack(sdkdefs.CMD_WRITE_ZERO_EO, "Lidar", 1)
-        self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent set extrinsic parameters to zero request")
+        response = self.send_command_receive_ack(sdk_defs.CMD_WRITE_ZERO_EO, "Lidar", 1)
+        self.msg.prefix_print("sent set extrinsic parameters to zero request", arrow="<--")
         if response == 0:
             self.readExtrinsic()
         elif response == 1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to set extrinsic parameters to zero")
+            self.msg.prefix_print("FAILED to set extrinsic parameters to zero")
         elif response == -1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect set extrinsics to zero response")
+            self.msg.prefix_print("incorrect set extrinsics to zero response")
 
     def setExtrinsicTo(self, x, y, z, roll, pitch, yaw):
         hex_string_to_add_to_cmd_string = self.turn_values_into_single_hex_string([float(roll),
@@ -1095,147 +1069,119 @@ class OpenPyLivox:
                                                                                    int(np.floor(z * 1000.))],
                                                                                   ['<f', '<f', '<f', '<i', '<i', '<i'])
 
-        cmdString = "AA012700000000b5ed0101" + hex_string_to_add_to_cmd_string
-        binString = bytes(cmdString, encoding='utf-8')
-        crc32checksum = helper.crc32from_str(binString)
-        cmdString += crc32checksum
-        binString = bytes(cmdString, encoding='utf-8')
-        setExtValues = bytes.fromhex((binString).decode('ascii'))
+        cmd_string = "AA012700000000b5ed0101" + hex_string_to_add_to_cmd_string
+        bin_string = bytes(cmd_string, encoding='utf-8')
+        crc32checksum = helper.crc32from_str(bin_string)
+        cmd_string += crc32checksum
+        bin_string = bytes(cmd_string, encoding='utf-8')
+        set_ext_values = bytes.fromhex(bin_string.decode('ascii'))
 
-        response = self.send_command_receive_ack(setExtValues, "Lidar", 1)
-        self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent set extrinsic parameters request")
+        response = self.send_command_receive_ack(set_ext_values, "Lidar", 1)
+        self.msg.prefix_print("sent set extrinsic parameters request", arrow="<--")
         if response == 0:
             self.readExtrinsic()
         elif response == 1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to set extrinsic parameters")
+            self.msg.prefix_print("FAILED to set extrinsic parameters")
         elif response == -1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect set extrinsic parameters response")
+            self.msg.prefix_print("incorrect set extrinsic parameters response")
 
-    def _update_utc(self, year, month, day, hour, microsec):
+    def _update_utc(self, year, month, day, hour, micro_sec):
 
         if self._is_connected:
 
-            yeari = int(year) - 2000
-            if yeari < 0 or yeari > 255:
-                yeari = 0
+            year_i = int(year) - 2000
+            if year_i < 0 or year_i > 255:
+                year_i = 0
 
-            monthi = int(month)
-            if monthi < 1 or monthi > 12:
-                monthi = 1
+            month_i = int(month)
+            if month_i < 1 or month_i > 12:
+                month_i = 1
 
-            dayi = int(day)
-            if dayi < 1 or dayi > 31:
-                dayi = 1
+            day_i = int(day)
+            if day_i < 1 or day_i > 31:
+                day_i = 1
 
-            houri = int(hour)
-            if houri < 0 or houri > 23:
-                houri = 0
+            hour_i = int(hour)
+            if hour_i < 0 or hour_i > 23:
+                hour_i = 0
 
-            seci = int(microsec)
-            if seci < 0 or seci > int(60 * 60 * 1000000):
-                seci = 0
+            sec_i = int(micro_sec)
+            if sec_i < 0 or sec_i > int(60 * 60 * 1000000):
+                sec_i = 0
 
-            year_b = str(binascii.hexlify(struct.pack('<B', yeari)))[2:-1]
-            month_b = str(binascii.hexlify(struct.pack('<B', monthi)))[2:-1]
-            day_b = str(binascii.hexlify(struct.pack('<B', dayi)))[2:-1]
-            hour_b = str(binascii.hexlify(struct.pack('<B', houri)))[2:-1]
-            sec_b = str(binascii.hexlify(struct.pack('<I', seci)))[2:-1]
+            year_b = str(binascii.hexlify(struct.pack('<B', year_i)))[2:-1]
+            month_b = str(binascii.hexlify(struct.pack('<B', month_i)))[2:-1]
+            day_b = str(binascii.hexlify(struct.pack('<B', day_i)))[2:-1]
+            hour_b = str(binascii.hexlify(struct.pack('<B', hour_i)))[2:-1]
+            sec_b = str(binascii.hexlify(struct.pack('<I', sec_i)))[2:-1]
 
             # test case Sept 10, 2020 at 17:15 UTC  -->  AA0117000000006439010A14090A1100E9A435D0337994
-            cmdString = "AA0117000000006439010A" + year_b + month_b + day_b + hour_b + sec_b
-            binString = bytes(cmdString, encoding='utf-8')
-            crc32checksum = helper.crc32from_str(binString)
-            cmdString += crc32checksum
-            binString = bytes(cmdString, encoding='utf-8')
-            setUTCValues = bytes.fromhex((binString).decode('ascii'))
+            cmd_string = "AA0117000000006439010A" + year_b + month_b + day_b + hour_b + sec_b
+            bin_string = bytes(cmd_string, encoding='utf-8')
+            crc32checksum = helper.crc32from_str(bin_string)
+            cmd_string += crc32checksum
+            bin_string = bytes(cmd_string, encoding='utf-8')
+            set_utc_values = bytes.fromhex(bin_string.decode('ascii'))
 
-            self._wait_for_idle()
-            self._cmd_socket.sendto(setUTCValues, (self._sensor_ip, 65000))
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent update UTC request")
+            response = self.send_command_receive_ack(set_utc_values, "Lidar", 10)
+            if response == 0:
+                self.msg.prefix_print("Updated UTC value")
+            elif response == 1:
+                self.msg.prefix_print("FAILED to update UTC values")
+            elif response == -1:
+                self.msg.prefix_print("incorrect update UTC values response")
 
-            # check for proper response from update UTC request
-            if select.select([self._cmd_socket], [], [], 0.1)[0]:
-                binData, addr = self._cmd_socket.recvfrom(16)
-                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
-
-                if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "10":
-                    ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
-                    if ret_code == 1:
-                        self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to update UTC values")
-                else:
-                    self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect update UTC values response")
-        else:
-            self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
-
-    def updateUTC(self, year, month, day, hour, microsec):
-        self._update_utc(year, month, day, hour, microsec)
+    def updateUTC(self, year, month, day, hour, micro_sec):
+        self._update_utc(year, month, day, hour, micro_sec)
         for i in range(len(self._mid100_sensors)):
-            self._mid100_sensors[i]._update_utc(year, month, day, hour, microsec)
+            self._mid100_sensors[i]._update_utc(year, month, day, hour, micro_sec)
 
-    def _set_rain_fog_suppression(self, OnOff: bool):
-        if OnOff:
-            response = self.send_command_receive_ack(sdkdefs.CMD_RAIN_FOG_ON, "Lidar", 3)
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent turn on rain/fog suppression request")
+    def _set_rain_fog_suppression(self, on_off: bool):
+        if on_off:
+            response = self.send_command_receive_ack(sdk_defs.CMD_RAIN_FOG_ON, "Lidar", 3)
+            self.msg.prefix_print("sent turn on rain/fog suppression request", arrow="<--")
         else:
-            response = self.send_command_receive_ack(sdkdefs.CMD_RAIN_FOG_OFF, "Lidar", 3)
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent turn off rain/fog suppression request")
+            response = self.send_command_receive_ack(sdk_defs.CMD_RAIN_FOG_OFF, "Lidar", 3)
+            self.msg.prefix_print("sent turn off rain/fog suppression request", arrow="<--")
 
         if response == 1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to set rain/fog suppression value")
+            self.msg.prefix_print("FAILED to set rain/fog suppression value")
         elif response == -1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect set rain/fog suppression response")
+            self.msg.prefix_print("incorrect set rain/fog suppression response")
 
-    def setRainFogSuppression(self, OnOff):
-        self._set_rain_fog_suppression(OnOff)
+    def setRainFogSuppression(self, on_off):
+        self._set_rain_fog_suppression(on_off)
         for i in range(len(self._mid100_sensors)):
-            self._mid100_sensors[i]._set_rain_fog_suppression(OnOff)
+            self._mid100_sensors[i]._set_rain_fog_suppression(on_off)
 
-    def _set_fan(self, OnOff):
-        if OnOff:
-            response = self.send_command_receive_ack(sdkdefs.CMD_FAN_ON, "Lidar", 4)
-            self.msg.print(
-                "   " + self._sensor_ip + self._format_spaces + "   <--     sent turn on fan request")
+    def _set_fan(self, on_off):
+        if on_off:
+            response = self.send_command_receive_ack(sdk_defs.CMD_FAN_ON, "Lidar", 4)
+            self.msg.prefix_print("sent turn on fan request", arrow="<--")
         else:
-            response = self.send_command_receive_ack(sdkdefs.CMD_FAN_OFF, "Lidar", 4)
-            self.msg.print(
-                "   " + self._sensor_ip + self._format_spaces + "   <--     sent turn off fan request")
+            response = self.send_command_receive_ack(sdk_defs.CMD_FAN_OFF, "Lidar", 4)
+            self.msg.prefix_print("sent turn off fan request", arrow="<--")
 
         if response == 1:
-            self.msg.print(
-                "   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to set fan value")
+            self.msg.prefix_print("FAILED to set fan value")
         elif response == -1:
-            self.msg.print(
-                "   " + self._sensor_ip + self._format_spaces + "   -->     incorrect set fan response")
+            self.msg.prefix_print("incorrect set fan response")
 
-    def setFan(self, OnOff):
-        self._set_fan(OnOff)
+    def setFan(self, on_off):
+        self._set_fan(on_off)
         for i in range(len(self._mid100_sensors)):
-            self._mid100_sensors[i]._set_fan(OnOff)
+            self._mid100_sensors[i]._set_fan(on_off)
 
     def _get_fan(self):
-
-        if self._is_connected:
-            self._wait_for_idle()
-
-            self._cmd_socket.sendto(sdkdefs.CMD_GET_FAN, (self._sensor_ip, 65000))
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent get fan state request")
-
-            # check for proper response from get fan request
-            if select.select([self._cmd_socket], [], [], 0.1)[0]:
-                binData, addr = self._cmd_socket.recvfrom(17)
-                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
-
-                if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "5":
-                    ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
-                    if ret_code == 1:
-                        self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to get fan state value")
-                    elif ret_code == 0:
-                        value = struct.unpack('<B', binData[12:13])[0]
-                        print("   " + self._sensor_ip + self._format_spaces + "   -->     fan state: " + str(value))
-                else:
-                    self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect get fan state response")
-        else:
-            self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
+        response, data = self.send_command_receive_data(sdk_defs.CMD_GET_FAN, "Lidar", 5)
+        self.msg.prefix_print("sent get fan state request", arrow="<--")
+        if response == 0:
+            value = struct.unpack('<B', data[12:13])[0]
+            print("   " + self._sensor_ip + self._format_spaces + "   -->     fan state: " + str(value))
+        elif response == 1:
+            self.msg.prefix_print("FAILED to get fan state value")
+        elif response == -1:
+            self.msg.prefix_print("incorrect get fan state response")
 
     def getFan(self):
         self._get_fan()
@@ -1244,107 +1190,100 @@ class OpenPyLivox:
 
     def setLidarReturnMode(self, Mode_ID):
         if Mode_ID == 0:
-            response = self.send_command_receive_ack(sdkdefs.CMD_LIDAR_SINGLE_1ST, "Lidar", 6)
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent single first return lidar mode request")
+            response = self.send_command_receive_ack(sdk_defs.CMD_LIDAR_SINGLE_1ST, "Lidar", 6)
+            self.msg.prefix_print("sent single first return lidar mode request", arrow="<--")
         elif Mode_ID == 1:
-            response = self.send_command_receive_ack(sdkdefs.CMD_LIDAR_SINGLE_STRONGEST, "Lidar", 6)
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent single strongest return lidar mode request")
+            response = self.send_command_receive_ack(sdk_defs.CMD_LIDAR_SINGLE_STRONGEST, "Lidar", 6)
+            self.msg.prefix_print("sent single strongest return lidar mode request", arrow="<--")
         elif Mode_ID == 2:
-            response = self.send_command_receive_ack(sdkdefs.CMD_LIDAR_DUAL, "Lidar", 6)
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent dual return lidar mode request")
+            response = self.send_command_receive_ack(sdk_defs.CMD_LIDAR_DUAL, "Lidar", 6)
+            self.msg.prefix_print("sent dual return lidar mode request", arrow="<--")
         else:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     Invalid mode_id for setting lidar return mode")
+            self.msg.prefix_print("Invalid mode_id for setting lidar return mode", arrow="<--")
             return
 
         if response == 1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to set lidar mode value")
+            self.msg.prefix_print("     FAILED to set lidar mode value")
         elif response == -1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect set lidar mode response")
+            self.msg.prefix_print("incorrect set lidar mode response")
 
-    def setIMUdataPush(self, OnOff: bool):
-        if OnOff:
-            response = self.send_command_receive_ack(sdkdefs.CMD_IMU_DATA_ON, "Lidar", 8)
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent start IMU data push request")
+    def setIMUdataPush(self, on_off: bool):
+        if on_off:
+            response = self.send_command_receive_ack(sdk_defs.CMD_IMU_DATA_ON, "Lidar", 8)
+            self.msg.prefix_print("sent start IMU data push request", arrow="<--")
         else:
-            response = self.send_command_receive_ack(sdkdefs.CMD_IMU_DATA_OFF, "Lidar", 8)
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent stop IMU data push request")
+            response = self.send_command_receive_ack(sdk_defs.CMD_IMU_DATA_OFF, "Lidar", 8)
+            self.msg.prefix_print("sent stop IMU data push request", arrow="<--")
 
         if response == 1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to set IMU data push value")
+            self.msg.prefix_print("FAILED to set IMU data push value")
         elif response == -1:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect set IMU data push response")
+            self.msg.prefix_print("incorrect set IMU data push response")
 
     def getIMUdataPush(self):
-
-        if self._is_connected:
-            self._wait_for_idle()
-
-            self._cmd_socket.sendto(sdkdefs.CMD_GET_IMU, (self._sensor_ip, 65000))
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent get IMU push state request")
-
-            # check for proper response from get IMU request
-            if select.select([self._cmd_socket], [], [], 0.1)[0]:
-                binData, addr = self._cmd_socket.recvfrom(17)
-                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, binData)
-
-                if ack == "ACK (response)" and cmd_set == "Lidar" and cmd_id == "9":
-                    ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
-                    if ret_code == 1:
-                        self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     FAILED to get IMU push state value")
-                    elif ret_code == 0:
-                        value = struct.unpack('<B', binData[12:13])[0]
-                        print("   " + self._sensor_ip + self._format_spaces + "   -->     IMU push state: " + str(value))
-                else:
-                    self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     incorrect get IMU push state response")
-        else:
-            self.msg.print("Not connected to Livox sensor at IP: " + self._sensor_ip)
+        response, data = self.send_command_receive_data(sdk_defs.CMD_GET_IMU, "Lidar", 9)
+        self.msg.prefix_print("sent get IMU push state request", arrow="<--")
+        if response == 0:
+            value = struct.unpack('<B', data[12:13])[0]
+            self.msg.prefix_print("IMU push state: " + str(value))
+        elif response == 1:
+            self.msg.prefix_print("FAILED to get IMU push state value")
+        elif response == -1:
+            self.msg.prefix_print("incorrect get IMU push state response")
 
     @deprecated(version='1.0.2', reason="You should use saveDataToFile instead")
-    def saveDataToCSV(self, filePathAndName, secsToWait, duration):
+    def saveDataToCSV(self, file_path_and_name, secs_to_wait, duration):
 
         if self._is_connected:
             if self._is_data:
                 if self._firmware != "UNKNOWN":
                     try:
-                        firmwareType = sdkdefs.SPECIAL_FIRMWARE_TYPE_DICT[self._firmware]
+                        firmware_type = sdk_defs.SPECIAL_FIRMWARE_TYPE_DICT[self._firmware]
                     except:
-                        firmwareType = 1
+                        firmware_type = 1
 
                     if duration < 0:
-                        self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     * ISSUE: saving data, negative duration")
+                        self.msg.print("   " + self._sensor_ip + self._format_spaces +
+                                       "   -->     * ISSUE: saving data, negative duration")
                     else:
                         # max duration = 4 years - 1 sec
                         if duration >= 126230400:
-                            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     * ISSUE: saving data, duration too big")
+                            self.msg.print("   " + self._sensor_ip + self._format_spaces +
+                                           "   -->     * ISSUE: saving data, duration too big")
                         else:
 
-                            if secsToWait < 0:
-                                self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     * ISSUE: saving data, negative time to wait")
+                            if secs_to_wait < 0:
+                                self.msg.print("   " + self._sensor_ip + self._format_spaces +
+                                               "   -->     * ISSUE: saving data, negative time to wait")
                             else:
                                 # max time to wait = 15 mins
-                                if secsToWait > 900:
-                                    self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     * ISSUE: saving data, time to wait too big")
+                                if secs_to_wait > 900:
+                                    self.msg.print("   " + self._sensor_ip + self._format_spaces +
+                                                   "   -->     * ISSUE: saving data, time to wait too big")
                                 else:
 
-                                    if filePathAndName == "":
-                                        self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     * ISSUE: saving data, file path and name missing")
+                                    if file_path_and_name == "":
+                                        self.msg.print("   " + self._sensor_ip + self._format_spaces +
+                                                       "   -->     * ISSUE: saving data, file path and name missing")
                                     else:
 
-                                        if filePathAndName[-4:].upper() != ".CSV":
-                                            filePathAndName += ".csv"
+                                        if file_path_and_name[-4:].upper() != ".CSV":
+                                            file_path_and_name += ".csv"
 
                                         self._is_writing = True
-                                        self._capture_stream.filePathAndName = filePathAndName
-                                        self._capture_stream.secsToWait = secsToWait
+                                        self._capture_stream.filePathAndName = file_path_and_name
+                                        self._capture_stream.secsToWait = secs_to_wait
                                         self._capture_stream.duration = duration
-                                        self._capture_stream.firmwareType = firmwareType
+                                        self._capture_stream.firmwareType = firmware_type
                                         self._capture_stream._showMessages = self._show_messages
                                         time.sleep(0.1)
                                         self._capture_stream.isCapturing = True
                 else:
-                    self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     unknown firmware version")
+                    self.msg.print("   " + self._sensor_ip + self._format_spaces +
+                                   "   -->     unknown firmware version")
             else:
-                self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     WARNING: data stream not started, no CSV file created")
+                self.msg.print("   " + self._sensor_ip + self._format_spaces +
+                               "   -->     WARNING: data stream not started, no CSV file created")
 
     @deprecated(version='1.0.2', reason="You should use closeFile instead")
     def closeCSV(self):
@@ -1354,64 +1293,54 @@ class OpenPyLivox:
                     self._capture_stream.stop()
                 self._is_writing = False
 
-    def _saveDataToFile(self, filePathAndName, secsToWait, duration):
-
+    def _save_data_to_file(self, file_path_and_name, secs_to_wait, duration):
         if self._is_connected:
             if self._is_data:
                 if self._firmware != "UNKNOWN":
                     try:
-                        firmwareType = sdkdefs.SPECIAL_FIRMWARE_TYPE_DICT[self._firmware]
+                        firmware_type = sdk_defs.SPECIAL_FIRMWARE_TYPE_DICT[self._firmware]
                     except:
-                        firmwareType = 1
+                        firmware_type = 1
 
                     if duration < 0:
-                        self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     * ISSUE: saving data, negative duration")
+                        self.msg.prefix_print("     * ISSUE: saving data, negative duration")
+                    elif duration >= 126230400:  # max duration = 4 years - 1 sec
+                        self.msg.prefix_print("     * ISSUE: saving data, duration too big")
+                    elif secs_to_wait < 0:
+                        self.msg.prefix_print("     * ISSUE: saving data, negative time to wait")
+                    elif secs_to_wait > 15 * 60:  # max time to wait = 15 mins
+                        self.msg.prefix_print("     * ISSUE: saving data, time to wait too big")
+                    elif file_path_and_name == "":
+                        self.msg.prefix_print("     * ISSUE: saving data, file path and name missing")
                     else:
-                        # max duration = 4 years - 1 sec
-                        if duration >= 126230400:
-                            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     * ISSUE: saving data, duration too big")
-                        else:
-
-                            if secsToWait < 0:
-                                self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     * ISSUE: saving data, negative time to wait")
-                            else:
-                                # max time to wait = 15 mins
-                                if secsToWait > 900:
-                                    self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     * ISSUE: saving data, time to wait too big")
-                                else:
-
-                                    if filePathAndName == "":
-                                        self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     * ISSUE: saving data, file path and name missing")
-                                    else:
-
-                                        self._is_writing = True
-                                        self._capture_stream.file_path_and_name = filePathAndName
-                                        self._capture_stream.secs_to_wait = secsToWait
-                                        self._capture_stream.duration = duration
-                                        self._capture_stream.firmware_type = firmwareType
-                                        self._capture_stream._show_messages = self._show_messages
-                                        time.sleep(0.1)
-                                        self._capture_stream.is_capturing = True
+                        self._is_writing = True
+                        self._capture_stream.file_path_and_name = file_path_and_name
+                        self._capture_stream.secs_to_wait = secs_to_wait
+                        self._capture_stream.duration = duration
+                        self._capture_stream.firmware_type = firmware_type
+                        self._capture_stream._show_messages = self._show_messages
+                        time.sleep(0.1)
+                        self._capture_stream.is_capturing = True
                 else:
-                    self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     unknown firmware version")
+                    self.msg.prefix_print("     unknown firmware version")
             else:
-                self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     WARNING: data stream not started, no data file created")
+                self.msg.prefix_print("     WARNING: data stream not started, no data file created")
 
-    def saveDataToFile(self, filePathAndName, secsToWait, duration):
-        path_file = Path(filePathAndName)
+    def saveDataToFile(self, file_path_and_name, secs_to_wait, duration):
+        path_file = Path(file_path_and_name)
         filename = path_file.stem
-        exten = path_file.suffix
-        self._saveDataToFile(filePathAndName, secsToWait, duration)
+        extension = path_file.suffix
+        self._save_data_to_file(file_path_and_name, secs_to_wait, duration)
         for i in range(len(self._mid100_sensors)):
             new_file = ""
             if i == 0:
-                new_file = filename + "_M" + exten
+                new_file = filename + "_M" + extension
             elif i == 1:
-                new_file = filename + "_R" + exten
+                new_file = filename + "_R" + extension
 
-            self._mid100_sensors[i]._saveDataToFile(new_file, secsToWait, duration)
+            self._mid100_sensors[i]._save_data_to_file(new_file, secs_to_wait, duration)
 
-    def _closeFile(self):
+    def _close_file(self):
         if self._is_connected:
             if self._is_writing:
                 if self._capture_stream is not None:
@@ -1419,9 +1348,9 @@ class OpenPyLivox:
                 self._is_writing = False
 
     def closeFile(self):
-        self._closeFile()
+        self._close_file()
         for i in range(len(self._mid100_sensors)):
-            self._mid100_sensors[i]._closeFile()
+            self._mid100_sensors[i]._close_file()
 
     def _resetShowMessages(self):
         self._show_messages = self._init_show_messages
@@ -1436,33 +1365,33 @@ class OpenPyLivox:
             return [self._computer_ip, self._sensor_ip, str(self._data_port), str(self._cmd_port), str(self._imu_port)]
 
     def connectionParameters(self):
-        sensorIPs = []
-        dataPorts = []
-        cmdPorts = []
-        imuPorts = []
+        sensor_ips = []
+        data_ports = []
+        cmd_ports = []
+        imu_ports = []
 
         params = self._connectionParameters()
-        sensorIPs.append(params[1])
-        dataPorts.append(params[2])
-        cmdPorts.append(params[3])
-        imuPorts.append(params[4])
+        sensor_ips.append(params[1])
+        data_ports.append(params[2])
+        cmd_ports.append(params[3])
+        imu_ports.append(params[4])
 
         for i in range(len(self._mid100_sensors)):
             params = self._mid100_sensors[i]._connectionParameters()
-            sensorIPs.append(params[1])
-            dataPorts.append(params[2])
-            cmdPorts.append(params[3])
-            imuPorts.append(params[4])
+            sensor_ips.append(params[1])
+            data_ports.append(params[2])
+            cmd_ports.append(params[3])
+            imu_ports.append(params[4])
 
         if self._show_messages:
             print("      Computer IP Address:    " + params[0])
-            print("      Sensor IP Address(es):  " + str(sensorIPs))
-            print("      Data Port Number(s):    " + str(dataPorts))
-            print("      Command Port Number(s): " + str(cmdPorts))
+            print("      Sensor IP Address(es):  " + str(sensor_ips))
+            print("      Data Port Number(s):    " + str(data_ports))
+            print("      Command Port Number(s): " + str(cmd_ports))
             if self._device_type == "Horizon" or self._device_type == "Tele-15":
-                print("      IMU Port Number(s):     " + str(imuPorts))
+                print("      IMU Port Number(s):     " + str(imu_ports))
 
-        return [params[0], sensorIPs, dataPorts, cmdPorts, imuPorts]
+        return [params[0], sensor_ips, data_ports, cmd_ports, imu_ports]
 
     def extrinsicParameters(self):
         if self._is_connected:
@@ -1488,7 +1417,7 @@ class OpenPyLivox:
 
     def serialNumber(self):
         if self._is_connected:
-            self.msg.print("   " + self._sensor_ip + self._format_spaces + "   -->     Serial # " + self._serial)
+            self.msg.prefix_print(f"     Serial # {self._serial}")
 
             return self._serial
 
@@ -1620,22 +1549,21 @@ class OpenPyLivox:
 
                 return [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1]
 
-    def _doneCapturing(self):
+    def _done_capturing(self):
         # small sleep to ensure this command isn't continuously called if in a while True loop
         time.sleep(0.01)
         if self._capture_stream is not None:
             if self._capture_stream.duration != 126230400:
-                return not (self._capture_stream.started)
+                return not self._capture_stream.started
             else:
                 return True
         else:
             return True
 
     def doneCapturing(self):
-        stop = []
-        stop.append(self._doneCapturing())
+        stop = [self._done_capturing()]
         for i in range(len(self._mid100_sensors)):
-            stop.append(self._mid100_sensors[i]._doneCapturing())
+            stop.append(self._mid100_sensors[i]._done_capturing())
 
         return all(stop)
 
@@ -1654,61 +1582,61 @@ def allDoneCapturing(sensors):
     return all(stop)
 
 
-def _convertBin2CSV(filePathAndName, deleteBin):
-    binFile = None
-    csvFile = None
-    imuFile = None
-    imu_csvFile = None
+def _convert_bin2_csv(file_path_and_name, delete_bin):
+    bin_file = None
+    csv_file = None
+    imu_file = None
+    imu_csv_file = None
 
     try:
-        dataClass = 0
-        if os.path.exists(filePathAndName) and os.path.isfile(filePathAndName):
-            bin_size = Path(filePathAndName).stat().st_size - 15
-            binFile = open(filePathAndName, "rb")
+        data_class = 0
+        if os.path.exists(file_path_and_name) and os.path.isfile(file_path_and_name):
+            bin_size = Path(file_path_and_name).stat().st_size - 15
+            bin_file = open(file_path_and_name, "rb")
 
-            checkMessage = (binFile.read(11)).decode('UTF-8')
-            if checkMessage == "OPENPYLIVOX":
-                with open(filePathAndName + ".csv", "w", 1) as csvFile:
-                    firmwareType = struct.unpack('<h', binFile.read(2))[0]
-                    dataType = struct.unpack('<h', binFile.read(2))[0]
+            check_message = (bin_file.read(11)).decode('UTF-8')
+            if check_message == "OPENPYLIVOX":
+                with open(file_path_and_name + ".csv", "w", 1) as csv_file:
+                    firmware_type = struct.unpack('<h', bin_file.read(2))[0]
+                    data_type = struct.unpack('<h', bin_file.read(2))[0]
                     divisor = 1
 
-                    if firmwareType >= 1 and firmwareType <= 3:
-                        if dataType >= 0 and dataType <= 5:
+                    if 1 <= firmware_type <= 3:
+                        if 0 <= data_type <= 5:
                             print("CONVERTING OPL BINARY DATA, PLEASE WAIT...")
-                            if firmwareType == 1 and dataType == 0:
-                                csvFile.write("//X,Y,Z,Inten-sity,Time,ReturnNum\n")
-                                dataClass = 1
+                            if firmware_type == 1 and data_type == 0:
+                                csv_file.write("//X,Y,Z,Inten-sity,Time,ReturnNum\n")
+                                data_class = 1
                                 divisor = 21
-                            elif firmwareType == 1 and dataType == 1:
-                                csvFile.write("//Distance,Zenith,Azimuth,Inten-sity,Time,ReturnNum\n")
-                                dataClass = 2
+                            elif firmware_type == 1 and data_type == 1:
+                                csv_file.write("//Distance,Zenith,Azimuth,Inten-sity,Time,ReturnNum\n")
+                                data_class = 2
                                 divisor = 17
-                            elif firmwareType > 1 and dataType == 0:
-                                csvFile.write("//X,Y,Z,Inten-sity,Time,ReturnNum\n")
-                                dataClass = 3
+                            elif firmware_type > 1 and data_type == 0:
+                                csv_file.write("//X,Y,Z,Inten-sity,Time,ReturnNum\n")
+                                data_class = 3
                                 divisor = 22
-                            elif firmwareType > 1 and dataType == 1:
-                                csvFile.write("//Distance,Zenith,Azimuth,Inten-sity,Time,ReturnNum\n")
-                                dataClass = 4
+                            elif firmware_type > 1 and data_type == 1:
+                                csv_file.write("//Distance,Zenith,Azimuth,Inten-sity,Time,ReturnNum\n")
+                                data_class = 4
                                 divisor = 18
-                            elif firmwareType == 1 and dataType == 2:
-                                csvFile.write("//X,Y,Z,Inten-sity,Time,ReturnNum,ReturnType,sConf,iConf\n")
-                                dataClass = 5
+                            elif firmware_type == 1 and data_type == 2:
+                                csv_file.write("//X,Y,Z,Inten-sity,Time,ReturnNum,ReturnType,sConf,iConf\n")
+                                data_class = 5
                                 divisor = 22
-                            elif firmwareType == 1 and dataType == 3:
-                                csvFile.write(
+                            elif firmware_type == 1 and data_type == 3:
+                                csv_file.write(
                                     "//Distance,Zenith,Azimuth,Inten-sity,Time,ReturnNum,ReturnType,sConf,iConf\n")
-                                dataClass = 6
+                                data_class = 6
                                 divisor = 18
-                            elif firmwareType == 1 and dataType == 4:
-                                csvFile.write("//X,Y,Z,Inten-sity,Time,ReturnNum,ReturnType,sConf,iConf\n")
-                                dataClass = 7
+                            elif firmware_type == 1 and data_type == 4:
+                                csv_file.write("//X,Y,Z,Inten-sity,Time,ReturnNum,ReturnType,sConf,iConf\n")
+                                data_class = 7
                                 divisor = 36
-                            elif firmwareType == 1 and dataType == 5:
-                                csvFile.write(
+                            elif firmware_type == 1 and data_type == 5:
+                                csv_file.write(
                                     "//Distance,Zenith,Azimuth,Inten-sity,Time,ReturnNum,ReturnType,sConf,iConf\n")
-                                dataClass = 8
+                                data_class = 8
                                 divisor = 24
 
                             num_recs = int(bin_size / divisor)
@@ -1717,156 +1645,158 @@ def _convertBin2CSV(filePathAndName, deleteBin):
                             while True:
                                 try:
                                     # Mid-40/100 Cartesian single return
-                                    if dataClass == 1:
-                                        coord1 = float(struct.unpack('<i', binFile.read(4))[0]) / 1000.0
-                                        coord2 = float(struct.unpack('<i', binFile.read(4))[0]) / 1000.0
-                                        coord3 = float(struct.unpack('<i', binFile.read(4))[0]) / 1000.0
-                                        intensity = int.from_bytes(binFile.read(1), byteorder='little')
-                                        timestamp_sec = float(struct.unpack('<d', binFile.read(8))[0])
-                                        csvFile.write("{0:.3f}".format(coord1) + "," + "{0:.3f}".format(
+                                    if data_class == 1:
+                                        coord1 = float(struct.unpack('<i', bin_file.read(4))[0]) / 1000.0
+                                        coord2 = float(struct.unpack('<i', bin_file.read(4))[0]) / 1000.0
+                                        coord3 = float(struct.unpack('<i', bin_file.read(4))[0]) / 1000.0
+                                        intensity = int.from_bytes(bin_file.read(1), byteorder='little')
+                                        timestamp_sec = float(struct.unpack('<d', bin_file.read(8))[0])
+                                        csv_file.write("{0:.3f}".format(coord1) + "," + "{0:.3f}".format(
                                             coord2) + "," + "{0:.3f}".format(coord3) + "," + str(
                                             intensity) + "," + "{0:.6f}".format(timestamp_sec) + ",1\n")
 
                                     # Mid-40/100 Spherical single return
-                                    elif dataClass == 2:
-                                        coord1 = float(struct.unpack('<I', binFile.read(4))[0]) / 1000.0
-                                        coord2 = float(struct.unpack('<H', binFile.read(2))[0]) / 100.0
-                                        coord3 = float(struct.unpack('<H', binFile.read(2))[0]) / 100.0
-                                        intensity = int.from_bytes(binFile.read(1), byteorder='little')
-                                        timestamp_sec = float(struct.unpack('<d', binFile.read(8))[0])
-                                        csvFile.write("{0:.3f}".format(coord1) + "," + "{0:.2f}".format(
+                                    elif data_class == 2:
+                                        coord1 = float(struct.unpack('<I', bin_file.read(4))[0]) / 1000.0
+                                        coord2 = float(struct.unpack('<H', bin_file.read(2))[0]) / 100.0
+                                        coord3 = float(struct.unpack('<H', bin_file.read(2))[0]) / 100.0
+                                        intensity = int.from_bytes(bin_file.read(1), byteorder='little')
+                                        timestamp_sec = float(struct.unpack('<d', bin_file.read(8))[0])
+                                        csv_file.write("{0:.3f}".format(coord1) + "," + "{0:.2f}".format(
                                             coord2) + "," + "{0:.2f}".format(coord3) + "," + str(
                                             intensity) + "," + "{0:.6f}".format(timestamp_sec) + ",1\n")
 
                                     # Mid-40/100 Cartesian multiple return
-                                    elif dataClass == 3:
-                                        coord1 = float(struct.unpack('<i', binFile.read(4))[0]) / 1000.0
-                                        coord2 = float(struct.unpack('<i', binFile.read(4))[0]) / 1000.0
-                                        coord3 = float(struct.unpack('<i', binFile.read(4))[0]) / 1000.0
-                                        intensity = int.from_bytes(binFile.read(1), byteorder='little')
-                                        timestamp_sec = float(struct.unpack('<d', binFile.read(8))[0])
-                                        returnNum = (binFile.read(1)).decode('UTF-8')
-                                        csvFile.write("{0:.3f}".format(coord1) + "," + "{0:.3f}".format(
+                                    elif data_class == 3:
+                                        coord1 = float(struct.unpack('<i', bin_file.read(4))[0]) / 1000.0
+                                        coord2 = float(struct.unpack('<i', bin_file.read(4))[0]) / 1000.0
+                                        coord3 = float(struct.unpack('<i', bin_file.read(4))[0]) / 1000.0
+                                        intensity = int.from_bytes(bin_file.read(1), byteorder='little')
+                                        timestamp_sec = float(struct.unpack('<d', bin_file.read(8))[0])
+                                        return_num = (bin_file.read(1)).decode('UTF-8')
+                                        csv_file.write("{0:.3f}".format(coord1) + "," + "{0:.3f}".format(
                                             coord2) + "," + "{0:.3f}".format(coord3) + "," + str(
-                                            intensity) + "," + "{0:.6f}".format(timestamp_sec) + "," + returnNum + "\n")
+                                            intensity) + "," + "{0:.6f}".format(timestamp_sec) + "," +
+                                                       return_num + "\n")
 
                                     # Mid-40/100 Spherical multiple return
-                                    elif dataClass == 4:
-                                        coord1 = float(struct.unpack('<I', binFile.read(4))[0]) / 1000.0
-                                        coord2 = float(struct.unpack('<H', binFile.read(2))[0]) / 100.0
-                                        coord3 = float(struct.unpack('<H', binFile.read(2))[0]) / 100.0
-                                        intensity = int.from_bytes(binFile.read(1), byteorder='little')
-                                        timestamp_sec = float(struct.unpack('<d', binFile.read(8))[0])
-                                        returnNum = (binFile.read(1)).decode('UTF-8')
-                                        csvFile.write("{0:.3f}".format(coord1) + "," + "{0:.2f}".format(
+                                    elif data_class == 4:
+                                        coord1 = float(struct.unpack('<I', bin_file.read(4))[0]) / 1000.0
+                                        coord2 = float(struct.unpack('<H', bin_file.read(2))[0]) / 100.0
+                                        coord3 = float(struct.unpack('<H', bin_file.read(2))[0]) / 100.0
+                                        intensity = int.from_bytes(bin_file.read(1), byteorder='little')
+                                        timestamp_sec = float(struct.unpack('<d', bin_file.read(8))[0])
+                                        return_num = (bin_file.read(1)).decode('UTF-8')
+                                        csv_file.write("{0:.3f}".format(coord1) + "," + "{0:.2f}".format(
                                             coord2) + "," + "{0:.2f}".format(coord3) + "," + str(
-                                            intensity) + "," + "{0:.6f}".format(timestamp_sec) + "," + returnNum + "\n")
+                                            intensity) + "," + "{0:.6f}".format(timestamp_sec) + "," +
+                                                       return_num + "\n")
 
                                     # Horizon/Tele-15 Cartesian single return (SDK Data Type 2)
-                                    elif dataClass == 5:
-                                        coord1 = float(struct.unpack('<i', binFile.read(4))[0]) / 1000.0
-                                        coord2 = float(struct.unpack('<i', binFile.read(4))[0]) / 1000.0
-                                        coord3 = float(struct.unpack('<i', binFile.read(4))[0]) / 1000.0
-                                        intensity = struct.unpack('<B', binFile.read(1))[0]
-                                        tag_bits = str(bin(int.from_bytes(binFile.read(1), byteorder='little')))[
+                                    elif data_class == 5:
+                                        coord1 = float(struct.unpack('<i', bin_file.read(4))[0]) / 1000.0
+                                        coord2 = float(struct.unpack('<i', bin_file.read(4))[0]) / 1000.0
+                                        coord3 = float(struct.unpack('<i', bin_file.read(4))[0]) / 1000.0
+                                        intensity = struct.unpack('<B', bin_file.read(1))[0]
+                                        tag_bits = str(bin(int.from_bytes(bin_file.read(1), byteorder='little')))[
                                                    2:].zfill(8)
                                         spatial_conf = str(int(tag_bits[0:2], 2))
                                         intensity_conf = str(int(tag_bits[2:4], 2))
-                                        returnType = str(int(tag_bits[4:6], 2))
-                                        timestamp_sec = float(struct.unpack('<d', binFile.read(8))[0])
-                                        csvFile.write("{0:.3f}".format(coord1) + "," + "{0:.3f}".format(
+                                        return_type = str(int(tag_bits[4:6], 2))
+                                        timestamp_sec = float(struct.unpack('<d', bin_file.read(8))[0])
+                                        csv_file.write("{0:.3f}".format(coord1) + "," + "{0:.3f}".format(
                                             coord2) + "," + "{0:.3f}".format(coord3) + "," + str(
                                             intensity) + "," + "{0:.6f}".format(
-                                            timestamp_sec) + ",1," + returnType + ","
-                                                      + spatial_conf + "," + intensity_conf + "\n")
+                                            timestamp_sec) + ",1," + return_type + ","
+                                                       + spatial_conf + "," + intensity_conf + "\n")
 
                                     # Horizon/Tele-15 Spherical single return (SDK Data Type 3)
-                                    elif dataClass == 6:
-                                        coord1 = float(struct.unpack('<I', binFile.read(4))[0]) / 1000.0
-                                        coord2 = float(struct.unpack('<H', binFile.read(2))[0]) / 100.0
-                                        coord3 = float(struct.unpack('<H', binFile.read(2))[0]) / 100.0
-                                        intensity = struct.unpack('<B', binFile.read(1))[0]
-                                        tag_bits = str(bin(int.from_bytes(binFile.read(1), byteorder='little')))[
+                                    elif data_class == 6:
+                                        coord1 = float(struct.unpack('<I', bin_file.read(4))[0]) / 1000.0
+                                        coord2 = float(struct.unpack('<H', bin_file.read(2))[0]) / 100.0
+                                        coord3 = float(struct.unpack('<H', bin_file.read(2))[0]) / 100.0
+                                        intensity = struct.unpack('<B', bin_file.read(1))[0]
+                                        tag_bits = str(bin(int.from_bytes(bin_file.read(1), byteorder='little')))[
                                                    2:].zfill(8)
                                         spatial_conf = str(int(tag_bits[0:2], 2))
                                         intensity_conf = str(int(tag_bits[2:4], 2))
-                                        returnType = str(int(tag_bits[4:6], 2))
-                                        timestamp_sec = float(struct.unpack('<d', binFile.read(8))[0])
-                                        csvFile.write("{0:.3f}".format(coord1) + "," + "{0:.2f}".format(
+                                        return_type = str(int(tag_bits[4:6], 2))
+                                        timestamp_sec = float(struct.unpack('<d', bin_file.read(8))[0])
+                                        csv_file.write("{0:.3f}".format(coord1) + "," + "{0:.2f}".format(
                                             coord2) + "," + "{0:.2f}".format(coord3) + "," + str(
                                             intensity) + "," + "{0:.6f}".format(
-                                            timestamp_sec) + ",1," + returnType + ","
-                                                      + spatial_conf + "," + intensity_conf + "\n")
+                                            timestamp_sec) + ",1," + return_type + ","
+                                                       + spatial_conf + "," + intensity_conf + "\n")
 
                                     # Horizon/Tele-15 Cartesian dual return (SDK Data Type 4)
-                                    elif dataClass == 7:
-                                        coord1a = float(struct.unpack('<i', binFile.read(4))[0]) / 1000.0
-                                        coord2a = float(struct.unpack('<i', binFile.read(4))[0]) / 1000.0
-                                        coord3a = float(struct.unpack('<i', binFile.read(4))[0]) / 1000.0
-                                        intensitya = struct.unpack('<B', binFile.read(1))[0]
-                                        tag_bitsa = str(bin(int.from_bytes(binFile.read(1), byteorder='little')))[
+                                    elif data_class == 7:
+                                        coord1a = float(struct.unpack('<i', bin_file.read(4))[0]) / 1000.0
+                                        coord2a = float(struct.unpack('<i', bin_file.read(4))[0]) / 1000.0
+                                        coord3a = float(struct.unpack('<i', bin_file.read(4))[0]) / 1000.0
+                                        intensity_a = struct.unpack('<B', bin_file.read(1))[0]
+                                        tag_bits_a = str(bin(int.from_bytes(bin_file.read(1), byteorder='little')))[
                                                     2:].zfill(8)
-                                        spatial_confa = str(int(tag_bitsa[0:2], 2))
-                                        intensity_confa = str(int(tag_bitsa[2:4], 2))
-                                        returnTypea = str(int(tag_bitsa[4:6], 2))
+                                        spatial_conf_a = str(int(tag_bits_a[0:2], 2))
+                                        intensity_conf_a = str(int(tag_bits_a[2:4], 2))
+                                        return_type_a = str(int(tag_bits_a[4:6], 2))
 
-                                        coord1b = float(struct.unpack('<i', binFile.read(4))[0]) / 1000.0
-                                        coord2b = float(struct.unpack('<i', binFile.read(4))[0]) / 1000.0
-                                        coord3b = float(struct.unpack('<i', binFile.read(4))[0]) / 1000.0
-                                        intensityb = struct.unpack('<B', binFile.read(1))[0]
-                                        tag_bitsb = str(bin(int.from_bytes(binFile.read(1), byteorder='little')))[
+                                        coord1b = float(struct.unpack('<i', bin_file.read(4))[0]) / 1000.0
+                                        coord2b = float(struct.unpack('<i', bin_file.read(4))[0]) / 1000.0
+                                        coord3b = float(struct.unpack('<i', bin_file.read(4))[0]) / 1000.0
+                                        intensity_b = struct.unpack('<B', bin_file.read(1))[0]
+                                        tag_bits_b = str(bin(int.from_bytes(bin_file.read(1), byteorder='little')))[
                                                     2:].zfill(8)
-                                        spatial_confb = str(int(tag_bitsb[0:2], 2))
-                                        intensity_confb = str(int(tag_bitsb[2:4], 2))
-                                        returnTypeb = str(int(tag_bitsb[4:6], 2))
+                                        spatial_conf_b = str(int(tag_bits_b[0:2], 2))
+                                        intensity_conf_b = str(int(tag_bits_b[2:4], 2))
+                                        return_type_b = str(int(tag_bits_b[4:6], 2))
 
-                                        timestamp_sec = float(struct.unpack('<d', binFile.read(8))[0])
+                                        timestamp_sec = float(struct.unpack('<d', bin_file.read(8))[0])
 
-                                        csvFile.write("{0:.3f}".format(coord1a) + "," + "{0:.3f}".format(
+                                        csv_file.write("{0:.3f}".format(coord1a) + "," + "{0:.3f}".format(
                                             coord2a) + "," + "{0:.3f}".format(coord3a) + "," + str(
-                                            intensitya) + "," + "{0:.6f}".format(
-                                            timestamp_sec) + ",1," + returnTypea + ","
-                                                      + spatial_confa + "," + intensity_confa + "\n")
+                                            intensity_a) + "," + "{0:.6f}".format(
+                                            timestamp_sec) + ",1," + return_type_a + ","
+                                                       + spatial_conf_a + "," + intensity_conf_a + "\n")
 
-                                        csvFile.write("{0:.3f}".format(coord1b) + "," + "{0:.3f}".format(
+                                        csv_file.write("{0:.3f}".format(coord1b) + "," + "{0:.3f}".format(
                                             coord2b) + "," + "{0:.3f}".format(coord3b) + "," + str(
-                                            intensityb) + "," + "{0:.6f}".format(
-                                            timestamp_sec) + ",2," + returnTypeb + ","
-                                                      + spatial_confb + "," + intensity_confb + "\n")
+                                            intensity_b) + "," + "{0:.6f}".format(
+                                            timestamp_sec) + ",2," + return_type_b + ","
+                                                       + spatial_conf_b + "," + intensity_conf_b + "\n")
 
                                     # Horizon/Tele-15 Spherical dual return (SDK Data Type 5)
-                                    elif dataClass == 8:
-                                        coord2 = float(struct.unpack('<H', binFile.read(2))[0]) / 100.0
-                                        coord3 = float(struct.unpack('<H', binFile.read(2))[0]) / 100.0
-                                        coord1a = float(struct.unpack('<I', binFile.read(4))[0]) / 1000.0
-                                        intensitya = struct.unpack('<B', binFile.read(1))[0]
-                                        tag_bitsa = str(bin(int.from_bytes(binFile.read(1), byteorder='little')))[
+                                    elif data_class == 8:
+                                        coord2 = float(struct.unpack('<H', bin_file.read(2))[0]) / 100.0
+                                        coord3 = float(struct.unpack('<H', bin_file.read(2))[0]) / 100.0
+                                        coord1a = float(struct.unpack('<I', bin_file.read(4))[0]) / 1000.0
+                                        intensity_a = struct.unpack('<B', bin_file.read(1))[0]
+                                        tag_bits_a = str(bin(int.from_bytes(bin_file.read(1), byteorder='little')))[
                                                     2:].zfill(8)
-                                        spatial_confa = str(int(tag_bitsa[0:2], 2))
-                                        intensity_confa = str(int(tag_bitsa[2:4], 2))
-                                        returnTypea = str(int(tag_bitsa[4:6], 2))
+                                        spatial_conf_a = str(int(tag_bits_a[0:2], 2))
+                                        intensity_conf_a = str(int(tag_bits_a[2:4], 2))
+                                        return_type_a = str(int(tag_bits_a[4:6], 2))
 
-                                        coord1b = float(struct.unpack('<I', binFile.read(4))[0]) / 1000.0
-                                        intensityb = struct.unpack('<B', binFile.read(1))[0]
-                                        tag_bitsb = str(bin(int.from_bytes(binFile.read(1), byteorder='little')))[
+                                        coord1b = float(struct.unpack('<I', bin_file.read(4))[0]) / 1000.0
+                                        intensity_b = struct.unpack('<B', bin_file.read(1))[0]
+                                        tag_bits_b = str(bin(int.from_bytes(bin_file.read(1), byteorder='little')))[
                                                     2:].zfill(8)
-                                        spatial_confb = str(int(tag_bitsb[0:2], 2))
-                                        intensity_confb = str(int(tag_bitsb[2:4], 2))
-                                        returnTypeb = str(int(tag_bitsb[4:6], 2))
+                                        spatial_conf_b = str(int(tag_bits_b[0:2], 2))
+                                        intensity_conf_b = str(int(tag_bits_b[2:4], 2))
+                                        return_type_b = str(int(tag_bits_b[4:6], 2))
 
-                                        timestamp_sec = float(struct.unpack('<d', binFile.read(8))[0])
+                                        timestamp_sec = float(struct.unpack('<d', bin_file.read(8))[0])
 
-                                        csvFile.write("{0:.3f}".format(coord1a) + "," + "{0:.2f}".format(
+                                        csv_file.write("{0:.3f}".format(coord1a) + "," + "{0:.2f}".format(
                                             coord2) + "," + "{0:.2f}".format(coord3) + "," + str(
-                                            intensitya) + "," + "{0:.6f}".format(
-                                            timestamp_sec) + ",1," + returnTypea + ","
-                                                      + spatial_confa + "," + intensity_confa + "\n")
+                                            intensity_a) + "," + "{0:.6f}".format(
+                                            timestamp_sec) + ",1," + return_type_a + ","
+                                                       + spatial_conf_a + "," + intensity_conf_a + "\n")
 
-                                        csvFile.write("{0:.3f}".format(coord1b) + "," + "{0:.2f}".format(
+                                        csv_file.write("{0:.3f}".format(coord1b) + "," + "{0:.2f}".format(
                                             coord2) + "," + "{0:.2f}".format(coord3) + "," + str(
-                                            intensityb) + "," + "{0:.6f}".format(
-                                            timestamp_sec) + ",2," + returnTypeb + ","
-                                                      + spatial_confb + "," + intensity_confb + "\n")
+                                            intensity_b) + "," + "{0:.6f}".format(
+                                            timestamp_sec) + ",2," + return_type_b + ","
+                                                       + spatial_conf_b + "," + intensity_conf_b + "\n")
 
                                     pbari.update(1)
 
@@ -1874,46 +1804,47 @@ def _convertBin2CSV(filePathAndName, deleteBin):
                                     break
 
                             pbari.close()
-                            binFile.close()
+                            bin_file.close()
                             print(
-                                "   - Point data was converted successfully to CSV, see file: " + filePathAndName + ".csv")
-                            if deleteBin:
-                                os.remove(filePathAndName)
+                                "   - Point data was converted successfully to CSV, see file: " +
+                                file_path_and_name + ".csv")
+                            if delete_bin:
+                                os.remove(file_path_and_name)
                                 print("     * OPL point data binary file has been deleted")
                             print()
                             time.sleep(0.5)
                         else:
                             print("*** ERROR: The OPL point data binary file reported a wrong data type ***")
-                            binFile.close()
+                            bin_file.close()
                     else:
                         print("*** ERROR: The OPL point data binary file reported a wrong firmware type ***")
-                        binFile.close()
+                        bin_file.close()
 
                 # check for and convert IMU BIN data (if it exists)
-                path_file = Path(filePathAndName)
+                path_file = Path(file_path_and_name)
                 filename = path_file.stem
-                exten = path_file.suffix
-                IMU_file = filename + "_IMU" + exten
+                extension = path_file.suffix
+                imu_file = filename + "_IMU" + extension
 
-                if os.path.exists(IMU_file) and os.path.isfile(IMU_file):
-                    bin_size2 = Path(IMU_file).stat().st_size - 15
+                if os.path.exists(imu_file) and os.path.isfile(imu_file):
+                    bin_size2 = Path(imu_file).stat().st_size - 15
                     num_recs = int(bin_size2 / 32)
-                    binFile2 = open(IMU_file, "rb")
+                    bin_file2 = open(imu_file, "rb")
 
-                    checkMessage = (binFile2.read(15)).decode('UTF-8')
-                    if checkMessage == "OPENPYLIVOX_IMU":
-                        with open(IMU_file + ".csv", "w", 1) as csvFile2:
+                    check_message = (bin_file2.read(15)).decode('UTF-8')
+                    if check_message == "OPENPYLIVOX_IMU":
+                        with open(imu_file + ".csv", "w", 1) as csvFile2:
                             csvFile2.write("//gyro_x,gyro_y,gyro_z,acc_x,acc_y,acc_z,time\n")
                             pbari2 = tqdm(total=num_recs, unit=" records", desc="   ")
                             while True:
                                 try:
-                                    gyro_x = "{0:.6f}".format(struct.unpack('<f', binFile2.read(4))[0])
-                                    gyro_y = "{0:.6f}".format(struct.unpack('<f', binFile2.read(4))[0])
-                                    gyro_z = "{0:.6f}".format(struct.unpack('<f', binFile2.read(4))[0])
-                                    acc_x = "{0:.6f}".format(struct.unpack('<f', binFile2.read(4))[0])
-                                    acc_y = "{0:.6f}".format(struct.unpack('<f', binFile2.read(4))[0])
-                                    acc_z = "{0:.6f}".format(struct.unpack('<f', binFile2.read(4))[0])
-                                    timestamp_sec = "{0:.6f}".format(struct.unpack('<d', binFile2.read(8))[0])
+                                    gyro_x = "{0:.6f}".format(struct.unpack('<f', bin_file2.read(4))[0])
+                                    gyro_y = "{0:.6f}".format(struct.unpack('<f', bin_file2.read(4))[0])
+                                    gyro_z = "{0:.6f}".format(struct.unpack('<f', bin_file2.read(4))[0])
+                                    acc_x = "{0:.6f}".format(struct.unpack('<f', bin_file2.read(4))[0])
+                                    acc_y = "{0:.6f}".format(struct.unpack('<f', bin_file2.read(4))[0])
+                                    acc_z = "{0:.6f}".format(struct.unpack('<f', bin_file2.read(4))[0])
+                                    timestamp_sec = "{0:.6f}".format(struct.unpack('<d', bin_file2.read(8))[0])
 
                                     csvFile2.write(gyro_x + "," + gyro_y + "," + gyro_z + "," + acc_x + "," + acc_y +
                                                    "," + acc_z + "," + timestamp_sec + "\n")
@@ -1924,23 +1855,24 @@ def _convertBin2CSV(filePathAndName, deleteBin):
                                     break
 
                             pbari2.close()
-                            binFile2.close()
-                            print("   - IMU data was converted successfully to CSV, see file: " + IMU_file + ".csv")
-                            if deleteBin:
-                                os.remove(IMU_file)
+                            bin_file2.close()
+                            print("   - IMU data was converted successfully to CSV, see file: " + imu_file + ".csv")
+                            if delete_bin:
+                                os.remove(imu_file)
                                 print("     * OPL IMU data binary file has been deleted")
                     else:
                         print("*** ERROR: The file was not recognized as an OpenPyLivox binary IMU data file ***")
-                        binFile2.close()
+                        bin_file2.close()
             else:
                 print("*** ERROR: The file was not recognized as an OpenPyLivox binary point data file ***")
-                binFile.close()
+                bin_file.close()
     except:
-        binFile.close()
+        bin_file.close()
         print("*** ERROR: An unknown error occurred while converting OPL binary data ***")
 
 
 def convertBin2CSV(file_path_and_name, delete_bin=False):
+def convertBin2CSV(file_path_and_name, deleteBin=False):
     print()
     path_file = Path(file_path_and_name)
     filename = path_file.stem
@@ -1948,15 +1880,21 @@ def convertBin2CSV(file_path_and_name, delete_bin=False):
 
     if os.path.isfile(file_path_and_name):
         _convertBin2CSV(file_path_and_name, delete_bin)
+    if os.path.isfile(file_path_and_name):
+        _convert_bin2_csv(file_path_and_name, deleteBin)
 
     if os.path.isfile(filename + "_M" + extension):
         _convertBin2CSV(filename + "_M" + extension, delete_bin)
+    if os.path.isfile(filename + "_M" + extension):
+        _convert_bin2_csv(filename + "_M" + extension, deleteBin)
 
     if os.path.isfile(filename + "_R" + extension):
         _convertBin2CSV(filename + "_R" + extension, delete_bin)
+    if os.path.isfile(filename + "_R" + extension):
+        _convert_bin2_csv(filename + "_R" + extension, deleteBin)
 
 
-def _convertBin2LAS(file_path_and_name, delete_bin):
+def _convert_bin2_las(file_path_and_name, delete_bin):
     bin_file = None
     csv_file = None
     imu_file = None
@@ -2066,48 +2004,49 @@ def _convertBin2LAS(file_path_and_name, delete_bin):
                         hdr.data_format_id = 3
 
                         # the following ID fields must be less than or equal to 32 characters in length
-                        System_ID = "OpenPyLivox"
-                        Software_ID = "OpenPyLivox V1.1.0"
+                        system_id = "OpenPyLivox"
+                        software_id = "OpenPyLivox V1.1.0"
 
-                        if len(System_ID) < 32:
-                            missingLength = 32 - len(System_ID)
-                            for i in range(0, missingLength):
-                                System_ID += " "
+                        if len(system_id) < 32:
+                            missing_length = 32 - len(system_id)
+                            for i in range(0, missing_length):
+                                system_id += " "
 
-                        if len(Software_ID) < 32:
-                            missingLength = 32 - len(Software_ID)
-                            for i in range(0, missingLength):
-                                Software_ID += " "
+                        if len(software_id) < 32:
+                            missing_length = 32 - len(software_id)
+                            for i in range(0, missing_length):
+                                software_id += " "
 
-                        hdr.system_id = System_ID
-                        hdr.software_id = Software_ID
+                        hdr.system_id = system_id
+                        hdr.software_id = software_id
 
-                        lasfile = laspy.file.File(file_path_and_name + ".las", mode="w", header=hdr)
+                        las_file = laspy.file.File(file_path_and_name + ".las", mode="w", header=hdr)
 
                         coord1s = np.asarray(coord1s, dtype=np.float32)
                         coord2s = np.asarray(coord2s, dtype=np.float32)
                         coord3s = np.asarray(coord3s, dtype=np.float32)
 
-                        xmin = np.floor(np.min(coord1s))
-                        ymin = np.floor(np.min(coord2s))
-                        zmin = np.floor(np.min(coord3s))
-                        lasfile.header.offset = [xmin, ymin, zmin]
+                        x_min = np.floor(np.min(coord1s))
+                        y_min = np.floor(np.min(coord2s))
+                        z_min = np.floor(np.min(coord3s))
+                        las_file.header.offset = [x_min, y_min, z_min]
 
-                        lasfile.header.scale = [0.001, 0.001, 0.001]
+                        las_file.header.scale = [0.001, 0.001, 0.001]
 
-                        lasfile.x = coord1s
-                        lasfile.y = coord2s
-                        lasfile.z = coord3s
-                        lasfile.gps_time = np.asarray(times, dtype=np.float32)
-                        lasfile.intensity = np.asarray(intensity, dtype=np.int16)
-                        lasfile.return_num = np.asarray(return_nums, dtype=np.int8)
+                        las_file.x = coord1s
+                        las_file.y = coord2s
+                        las_file.z = coord3s
+                        las_file.gps_time = np.asarray(times, dtype=np.float32)
+                        las_file.intensity = np.asarray(intensity, dtype=np.int16)
+                        las_file.return_num = np.asarray(return_nums, dtype=np.int8)
 
-                        lasfile.close()
+                        las_file.close()
 
                         pbari.close()
                         bin_file.close()
                         print(
-                            "   - Point data was converted successfully to LAS, see file: " + file_path_and_name + ".las")
+                            "   - Point data was converted successfully to LAS, see file: " +
+                            file_path_and_name + ".las")
                         if delete_bin:
                             os.remove(file_path_and_name)
                             print("     * OPL point data binary file has been deleted")
@@ -2123,28 +2062,28 @@ def _convertBin2LAS(file_path_and_name, delete_bin):
                 # check for and convert IMU BIN data (if it exists)
                 path_file = Path(file_path_and_name)
                 filename = path_file.stem
-                exten = path_file.suffix
-                IMU_file = filename + "_IMU" + exten
+                extension = path_file.suffix
+                imu_file = filename + "_IMU" + extension
 
-                if os.path.exists(IMU_file) and os.path.isfile(IMU_file):
-                    bin_size2 = Path(IMU_file).stat().st_size - 15
+                if os.path.exists(imu_file) and os.path.isfile(imu_file):
+                    bin_size2 = Path(imu_file).stat().st_size - 15
                     num_recs = int(bin_size2 / 32)
-                    binFile2 = open(IMU_file, "rb")
+                    bin_file2 = open(imu_file, "rb")
 
-                    check_message = (binFile2.read(15)).decode('UTF-8')
+                    check_message = (bin_file2.read(15)).decode('UTF-8')
                     if check_message == "OPENPYLIVOX_IMU":
-                        with open(IMU_file + ".csv", "w", 1) as csvFile2:
+                        with open(imu_file + ".csv", "w", 1) as csvFile2:
                             csvFile2.write("//gyro_x,gyro_y,gyro_z,acc_x,acc_y,acc_z,time\n")
                             pbari2 = tqdm(total=num_recs, unit=" records", desc="   ")
                             while True:
                                 try:
-                                    gyro_x = "{0:.6f}".format(struct.unpack('<f', binFile2.read(4))[0])
-                                    gyro_y = "{0:.6f}".format(struct.unpack('<f', binFile2.read(4))[0])
-                                    gyro_z = "{0:.6f}".format(struct.unpack('<f', binFile2.read(4))[0])
-                                    acc_x = "{0:.6f}".format(struct.unpack('<f', binFile2.read(4))[0])
-                                    acc_y = "{0:.6f}".format(struct.unpack('<f', binFile2.read(4))[0])
-                                    acc_z = "{0:.6f}".format(struct.unpack('<f', binFile2.read(4))[0])
-                                    timestamp_sec = "{0:.6f}".format(struct.unpack('<d', binFile2.read(8))[0])
+                                    gyro_x = "{0:.6f}".format(struct.unpack('<f', bin_file2.read(4))[0])
+                                    gyro_y = "{0:.6f}".format(struct.unpack('<f', bin_file2.read(4))[0])
+                                    gyro_z = "{0:.6f}".format(struct.unpack('<f', bin_file2.read(4))[0])
+                                    acc_x = "{0:.6f}".format(struct.unpack('<f', bin_file2.read(4))[0])
+                                    acc_y = "{0:.6f}".format(struct.unpack('<f', bin_file2.read(4))[0])
+                                    acc_z = "{0:.6f}".format(struct.unpack('<f', bin_file2.read(4))[0])
+                                    timestamp_sec = "{0:.6f}".format(struct.unpack('<d', bin_file2.read(8))[0])
 
                                     csvFile2.write(gyro_x + "," + gyro_y + "," + gyro_z + "," + acc_x + "," + acc_y +
                                                    "," + acc_z + "," + timestamp_sec + "\n")
@@ -2155,14 +2094,14 @@ def _convertBin2LAS(file_path_and_name, delete_bin):
                                     break
 
                             pbari2.close()
-                            binFile2.close()
-                            print("   - IMU data was converted successfully to CSV, see file: " + IMU_file + ".csv")
+                            bin_file2.close()
+                            print("   - IMU data was converted successfully to CSV, see file: " + imu_file + ".csv")
                             if delete_bin:
-                                os.remove(IMU_file)
+                                os.remove(imu_file)
                                 print("     * OPL IMU data binary file has been deleted")
                     else:
                         print("*** ERROR: The file was not recognized as an OpenPyLivox binary IMU data file ***")
-                        binFile2.close()
+                        bin_file2.close()
             else:
                 print("*** ERROR: The file was not recognized as an OpenPyLivox binary point data file ***")
                 bin_file.close()
@@ -2171,17 +2110,17 @@ def _convertBin2LAS(file_path_and_name, delete_bin):
         print("*** ERROR: An unknown error occurred while converting OPL binary data ***")
 
 
-def convertBin2LAS(filePathAndName, deleteBin=False):
+def convertBin2LAS(file_path_and_name, deleteBin=False):
     print()
-    path_file = Path(filePathAndName)
+    path_file = Path(file_path_and_name)
     filename = path_file.stem
-    exten = path_file.suffix
+    extension = path_file.suffix
 
-    if os.path.isfile(filePathAndName):
-        _convertBin2LAS(filePathAndName, deleteBin)
+    if os.path.isfile(file_path_and_name):
+        _convert_bin2_las(file_path_and_name, deleteBin)
 
-    if os.path.isfile(filename + "_M" + exten):
-        _convertBin2LAS(filename + "_M" + exten, deleteBin)
+    if os.path.isfile(filename + "_M" + extension):
+        _convert_bin2_las(filename + "_M" + extension, deleteBin)
 
-    if os.path.isfile(filename + "_R" + exten):
-        _convertBin2LAS(filename + "_R" + exten, deleteBin)
+    if os.path.isfile(filename + "_R" + extension):
+        _convert_bin2_las(filename + "_R" + extension, deleteBin)
