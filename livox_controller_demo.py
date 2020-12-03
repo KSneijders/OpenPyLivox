@@ -20,10 +20,38 @@ Description: Python3 demo for controlling a single or multiple Livox sensor(s) u
 import openpylivox as opl
 
 # only used for this demo
-# import time
+import time
 # import sys
-from multiprocessing import Queue
+import multiprocessing
 import data_queue_reader
+import struct
+
+
+def read_from_queue(queue):
+    print("STARTING DATA QUEUE READER THREAD")
+    i = 0
+    while True:
+        data_point = queue.get()
+        if not data_point:
+            time.sleep(0.001)
+            continue
+        if data_point == -1:
+            print("END OF QUEUE REACHED, BREAKING")
+            break
+        usable_data = decode_spherical_data(data_point)
+        i += 1
+        distance = usable_data[0]
+        zenith = usable_data[1]
+        azimuth = usable_data[2]
+        intensity = usable_data[3]
+        timestamp = usable_data[4]
+        # TODO: Use this data! \o/
+        if i == 1:
+            print("FIRST VALUE READ FROM QUEUE")
+        if i % 10000 == 0:
+            print(i)
+    print("We're done here")
+
 
 # demo operations for a single Livox Sensor
 def singleSensorDemo():
@@ -67,11 +95,12 @@ def singleSensorDemo():
         sensor.showMessages(True)
 
         # create a multiprocessing queue to write the output to
-        q = Queue()
+        q = multiprocessing.Queue()
         sensor.set_output_queue(q)
 
         # FOR SCIENCE
-        data_queue_reader.DataQueueReaderThread(q)
+        p = multiprocessing.Process(target=read_from_queue, args=(q,))
+        p.start()
 
         # set the output coordinate system to Spherical
         sensor.setSphericalCS()
@@ -145,7 +174,7 @@ def singleSensorDemo():
 
         filePathAndName = "test.bin"  # file extension is NOT used to automatically determine if ASCII or Binary data is stored
         secsToWait = 0.1  # seconds, time delayed data capture start
-        duration = 3  # seconds, zero (0) specifies an indefinite duration
+        duration = 10  # seconds, zero (0) specifies an indefinite duration
 
         # (*** IMPORTANT: this command starts a new thread, so the current program (thread) needs to exist for the 'duration' ***)
         # capture the data stream and save it to a file (if applicable, IMU data stream will also be saved to a file)
@@ -181,6 +210,9 @@ def singleSensorDemo():
 
         # properly disconnect from the sensor
         sensor.disconnect()
+
+        # cleanly end the reading process
+        p.join()
 
         # convert BINARY point data to LAS file and IMU data (if applicable) to CSV file
         # only works in conjunction with .dataStart_RT_B()
@@ -275,3 +307,15 @@ if __name__ == '__main__':
 
     singleSensorDemo()
     # multipleSensorsDemo()
+
+
+def decode_spherical_data(binary_data_point):
+    point_format = '<iHHBd'
+    point = struct.unpack(point_format, binary_data_point)
+    pt = [0, 0, 0, 0, 0]
+    pt[0] = point[0] / 1000.  # Distance
+    pt[1] = point[1] / 100.  # Zenimuth
+    pt[2] = point[2] / 100.  # Azimuth
+    pt[3] = point[3]  # Intensity
+    pt[4] = point[4]  # Timestamp
+    return pt

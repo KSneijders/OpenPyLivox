@@ -13,12 +13,12 @@ class DataQueueReaderThread:
         self.thread.start()
 
     def run(self):
-        print("STARTING DATA QUEUE READER THREAD)")
+        print("STARTING DATA QUEUE READER THREAD")
         i = 0
         while True:
             data_point = self.queue.get()
             if not data_point:
-                time.sleep(0.1)
+                time.sleep(0.001)
                 continue
             if data_point == -1:
                 print("END OF QUEUE REACHED, BREAKING")
