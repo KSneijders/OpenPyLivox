@@ -672,7 +672,7 @@ class DataCaptureThread:
         if self._device_type == "Horizon" or self._device_type == "Tele-15":
             self.msg.space_print(32, f"(IMU records: {imu_records})")
 
-        target_queue.put(None)
+        target_queue.put(-1)
 
         #if imu_reporting:
         #    imu_file.close()

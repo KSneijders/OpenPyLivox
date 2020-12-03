@@ -901,7 +901,7 @@ class OpenPyLivox:
                 self._capture_stream = DataCaptureThread(self._sensor_ip, self._data_socket, self._imu_socket, "", 3, 0, 0, 0, self._show_messages, self._format_spaces, self._device_type, self._target_output_queue)
                 time.sleep(0.12)
                 self._wait_for_idle()
-                self._cmd_socket.sendto(sdkdefs.CMD_DATA_START, (self._sensor_ip, 65000))
+                self._cmd_socket.sendto(sdk_defs.CMD_DATA_START, (self._sensor_ip, 65000))
                 self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent start data stream request")
 
                 # check for proper response from data start request
@@ -1173,7 +1173,7 @@ class OpenPyLivox:
             self._mid100_sensors[i]._set_fan(on_off)
 
     def _get_fan(self):
-        response, data = self.send_command_receive_data(sdk_defs.CMD_GET_FAN, "Lidar", 5)
+        response, data = self.send_command_receive_data(sdk_defs.CMD_GET_FAN, "Lidar", 5, 17)
         self.msg.prefix_print("sent get fan state request", arrow="<--")
         if response == 0:
             value = struct.unpack('<B', data[12:13])[0]
@@ -1221,7 +1221,7 @@ class OpenPyLivox:
             self.msg.prefix_print("incorrect set IMU data push response")
 
     def getIMUdataPush(self):
-        response, data = self.send_command_receive_data(sdk_defs.CMD_GET_IMU, "Lidar", 9)
+        response, data = self.send_command_receive_data(sdk_defs.CMD_GET_IMU, "Lidar", 9, 17)
         self.msg.prefix_print("sent get IMU push state request", arrow="<--")
         if response == 0:
             value = struct.unpack('<B', data[12:13])[0]
@@ -1872,26 +1872,19 @@ def _convert_bin2_csv(file_path_and_name, delete_bin):
 
 
 def convertBin2CSV(file_path_and_name, delete_bin=False):
-def convertBin2CSV(file_path_and_name, deleteBin=False):
     print()
     path_file = Path(file_path_and_name)
     filename = path_file.stem
     extension = path_file.suffix
 
     if os.path.isfile(file_path_and_name):
-        _convertBin2CSV(file_path_and_name, delete_bin)
-    if os.path.isfile(file_path_and_name):
-        _convert_bin2_csv(file_path_and_name, deleteBin)
+        _convert_bin2_csv(file_path_and_name, delete_bin)
 
     if os.path.isfile(filename + "_M" + extension):
-        _convertBin2CSV(filename + "_M" + extension, delete_bin)
-    if os.path.isfile(filename + "_M" + extension):
-        _convert_bin2_csv(filename + "_M" + extension, deleteBin)
+        _convert_bin2_csv(filename + "_M" + extension, delete_bin)
 
     if os.path.isfile(filename + "_R" + extension):
-        _convertBin2CSV(filename + "_R" + extension, delete_bin)
-    if os.path.isfile(filename + "_R" + extension):
-        _convert_bin2_csv(filename + "_R" + extension, deleteBin)
+        _convert_bin2_csv(filename + "_R" + extension, delete_bin)
 
 
 def _convert_bin2_las(file_path_and_name, delete_bin):
