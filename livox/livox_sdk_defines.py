@@ -1,4 +1,4 @@
-from openpylivox.helper import transform_defines as convert
+from livox.helper import transform_defines as convert
 
 CMD_QUERY = convert(b'AA010F0000000004D70002AE8A8A7B')
 CMD_HEARTBEAT = convert(b'AA010F0000000004D7000338BA8D0C')

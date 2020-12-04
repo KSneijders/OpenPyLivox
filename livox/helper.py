@@ -3,7 +3,7 @@ import struct
 
 import crcmod
 
-from openpylivox.enums import FirmwareType
+from livox.enums import FirmwareType
 
 """ ################################################################
 ################################ CRC ###############################

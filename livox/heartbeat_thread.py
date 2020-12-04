@@ -3,9 +3,9 @@ import sys
 import threading
 import time
 
-# from openpylivox.openpylivox import OpenPyLivox
-from openpylivox import helper
-from openpylivox.helper import _parse_resp
+# from livox.livox import OpenPyLivox
+from livox import helper
+from livox.helper import _parse_resp
 
 
 class HeartbeatThread:

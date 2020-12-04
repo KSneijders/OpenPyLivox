@@ -3,9 +3,9 @@ import struct
 import threading
 from pathlib import Path
 
-from openpylivox import helper
-from openpylivox.enums import DataType, FileType, FirmwareType
-from openpylivox.point_cloud_data import PointCloudData
+from livox import helper
+from livox.enums import DataType, FileType, FirmwareType
+from livox.point_cloud_data import PointCloudData
 
 
 class DataCaptureThread:
@@ -446,6 +446,10 @@ class DataCaptureThread:
                             coord = struct.unpack('<I', data_pc[byte_pos:byte_pos + 4])[0]
                         else:
                             raise ValueError("Unknown datatype.")
+
+                        # if data_type == DataType.SPHERICAL and not c.min_distance < coord < c.max_distance:
+                        #     byte_pos += 9
+                        #     continue
 
                         # Only check for `device == 100` in specific scenario
                         check_for_device_type = (

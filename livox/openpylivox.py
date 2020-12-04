@@ -38,11 +38,10 @@ import numpy as np
 from deprecated import deprecated
 from tqdm import tqdm
 
-from openpylivox import helper
-from openpylivox.data_capture_thread import DataCaptureThread
-from openpylivox.heartbeat_thread import HeartbeatThread
-from openpylivox.helper import _parse_resp
-import openpylivox.livox_sdk_defines as sdk_defs
+from livox import helper
+from livox.data_capture_thread import DataCaptureThread
+from livox.heartbeat_thread import HeartbeatThread
+import livox.livox_sdk_defines as sdk_defs
 
 
 class OpenPyLivox:
@@ -298,7 +297,7 @@ class OpenPyLivox:
             # check for proper response from lidar start request
             if select.select([self._cmd_socket], [], [], 0.1)[0]:
                 bin_data, addr = self._cmd_socket.recvfrom(16)
-                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, bin_data)
+                _, ack, cmd_set, cmd_id, ret_code_bin = helper._parse_resp(self._show_messages, bin_data)
                 # self.msg.print(ack + " / " + cmd_set + " / " + cmd_id)  # TODO: Put into logging
                 if ack == "ACK (response)" and cmd_set == expected_command_set and cmd_id == str(expected_command_id):
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
@@ -317,7 +316,7 @@ class OpenPyLivox:
             # check for proper response from read extrinsics request
             if select.select([self._cmd_socket], [], [], 0.1)[0]:
                 bin_data, addr = self._cmd_socket.recvfrom(length_bytes)
-                _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, bin_data)
+                _, ack, cmd_set, cmd_id, ret_code_bin = helper._parse_resp(self._show_messages, bin_data)
 
                 if ack == "ACK (response)" and cmd_set == expected_command_set and cmd_id == str(expected_command_id):
                     ret_code = int.from_bytes(ret_code_bin[0], byteorder='little')
@@ -352,7 +351,7 @@ class OpenPyLivox:
     def _query(self):
         response, data = self.send_command_receive_data(sdk_defs.CMD_QUERY, "General", 2, 20)
         if response == 0:
-            _, ack, cmd_set, cmd_id, ret_code_bin = _parse_resp(self._show_messages, data)
+            _, ack, cmd_set, cmd_id, ret_code_bin = helper._parse_resp(self._show_messages, data)
             aa = str(int.from_bytes(ret_code_bin[1], byteorder='little')).zfill(2)
             bb = str(int.from_bytes(ret_code_bin[2], byteorder='little')).zfill(2)
             cc = str(int.from_bytes(ret_code_bin[3], byteorder='little')).zfill(2)
@@ -366,7 +365,7 @@ class OpenPyLivox:
 
     def _info(self, bin_data):
 
-        good_data, cmd_message, data_message, data_id, data_bytes = _parse_resp(self._show_messages, bin_data)
+        good_data, cmd_message, data_message, data_id, data_bytes = helper._parse_resp(self._show_messages, bin_data)
         ip_range_code = None
         device_serial, type_message = "", ""
 
