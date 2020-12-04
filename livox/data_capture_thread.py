@@ -447,10 +447,6 @@ class DataCaptureThread:
                         else:
                             raise ValueError("Unknown datatype.")
 
-                        # if data_type == DataType.SPHERICAL and not c.min_distance < coord < c.max_distance:
-                        #     byte_pos += 9
-                        #     continue
-
                         # Only check for `device == 100` in specific scenario
                         check_for_device_type = (
                                 self.firmware_type == FirmwareType.SINGLE_RETURN and
