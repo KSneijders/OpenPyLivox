@@ -254,3 +254,5 @@ dmypy.json
 .idea/inspectionProfiles/profiles_settings.xml
 
 .idea/
+
+livox/config.json
