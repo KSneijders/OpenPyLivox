@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 
 Started on Mon. May 13th 2019
@@ -17,7 +15,12 @@ Description: Python3 demo for controlling a single or multiple Livox sensor(s) u
 """
 
 # openpylivox library import
+import pathlib
+import socket
+
 import livox.openpylivox as opl
+import livox.host_socket as host
+
 
 # only used for this demo
 # import time
@@ -26,7 +29,6 @@ import livox.openpylivox as opl
 
 # demo operations for a single Livox Sensor
 def singleSensorDemo():
-
     # create an openpylivox object
     sensor = opl.openpylivox(True)  # optional True/False, is used to have sensor messages printed to screen (default = False)
 
@@ -174,8 +176,12 @@ def singleSensorDemo():
         # convert BINARY point data to LAS file and IMU data (if applicable) to CSV file
         # only works in conjunction with .dataStart_RT_B()
         # designed so the efficiently collected binary point data can be converted to LAS at any time after data collection
-        #opl.convertBin2LAS(filePathAndName, deleteBin=False)
+        # opl.convertBin2LAS(filePathAndName, deleteBin=False)
         opl.convertBin2CSV(filePathAndName, deleteBin=True)
+
+        host.connect()
+        host.notify(filePathAndName)
+        host.close()
 
         # convert BINARY point data and IMU data (if applicable) to CSV files
         # only works in conjunction with .dataStart_RT_B()
@@ -188,7 +194,6 @@ def singleSensorDemo():
 
 # demo operations for automatically connecting to multiple Livox Sensors
 def multipleSensorsDemo():
-
     # simple list to collect individual sensor objects
     sensors = []
     filePathAndNames = []
@@ -261,6 +266,5 @@ def multipleSensorsDemo():
 
 
 if __name__ == '__main__':
-
     singleSensorDemo()
     # multipleSensorsDemo()
