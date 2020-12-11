@@ -1,7 +1,8 @@
 import json
 
-min_distance = float('-inf')
-max_distance = float('inf')
+min_distance = -5000
+max_distance = 25000
+duration = 1
 
 if 'values' not in locals():
     try:
