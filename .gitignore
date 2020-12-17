@@ -256,3 +256,5 @@ dmypy.json
 .idea/
 
 livox/config.json
+
+test.bin
