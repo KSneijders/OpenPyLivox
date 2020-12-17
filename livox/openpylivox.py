@@ -337,16 +337,16 @@ class OpenPyLivox:
         # self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent lidar disconnect request")
         # TODO: Put into logging
         if response == 1:
-            self.msg.prefix_print("     FAILED to disconnect")
+            self.msg.prefix_print("FAILED to disconnect")
         elif response == -1:
-            self.msg.prefix_print("     incorrect disconnect response")
+            self.msg.prefix_print("incorrect disconnect response")
 
     def _reboot_sensor(self):
         response = self.send_command_receive_ack(sdk_defs.CMD_REBOOT, "General", 10)
         if response == 1:
-            self.msg.prefix_print("     FAILED to reboot")
+            self.msg.prefix_print("FAILED to reboot")
         elif response == -1:
-            self.msg.prefix_print("     incorrect reboot response")
+            self.msg.prefix_print("incorrect reboot response")
 
     def _query(self):
         response, data = self.send_command_receive_data(sdk_defs.CMD_QUERY, "General", 2, 20)
@@ -359,9 +359,9 @@ class OpenPyLivox:
             self._firmware = aa + "." + bb + "." + cc + dd
             # self.msg.print(f"Firmware version is {self._firmware}")
         elif response == 1:
-            self.msg.prefix_print("     FAILED to receive query results")
+            self.msg.prefix_print("FAILED to receive query results")
         elif response == -1:
-            self.msg.prefix_print("     incorrect query response")
+            self.msg.prefix_print("incorrect query response")
 
     def _info(self, bin_data):
 
@@ -738,7 +738,7 @@ class OpenPyLivox:
         response = self.send_command_receive_ack(sdk_defs.CMD_LIDAR_START, "Lidar", 0)
         self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent lidar spin up request")
         if response == 1:
-            self.msg.prefix_print("     FAILED to spin up the lidar")
+            self.msg.prefix_print("FAILED to spin up the lidar")
         elif response == 2:
             self.msg.print("   " + self._sensor_ip + self._format_spaces +
                            "   -->     lidar is spinning up, please wait...")
@@ -768,7 +768,7 @@ class OpenPyLivox:
                     stopper = False
 
             if stopper:
-                self.msg.prefix_print("     lidar is ready")
+                self.msg.prefix_print("lidar is ready")
                 for i in range(len(self._mid100_sensors)):
                     if self._mid100_sensors[i]._showMessages:
                         print("   " + self._mid100_sensors[i]._sensor_ip + self._mid100_sensors[i]._format_spaces +
@@ -780,7 +780,7 @@ class OpenPyLivox:
         response = self.send_command_receive_ack(sdk_defs.CMD_LIDAR_POWERSAVE, "Lidar", 0)
         self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent lidar spin down request")
         if response == 1:
-            self.msg.prefix_print("     FAILED to spin down the lidar")
+            self.msg.prefix_print("FAILED to spin down the lidar")
         if response == 0:
             pass
         elif response == -1:
@@ -796,7 +796,7 @@ class OpenPyLivox:
         response = self.send_command_receive_ack(sdk_defs.CMD_LIDAR_START, "Lidar", 0)
         self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent lidar stand-by request")
         if response == 1:
-            self.msg.prefix_print("     FAILED to set lidar to stand-by")
+            self.msg.prefix_print("FAILED to set lidar to stand-by")
         elif response == -1:
             self.msg.print("   " + self._sensor_ip + self._format_spaces +
                            "   -->     incorrect lidar stand-by response")
@@ -854,7 +854,7 @@ class OpenPyLivox:
             elif response == -1:
                 self.msg.prefix_print("incorrect start data stream response")
         else:
-            self.msg.prefix_print("     data stream already started")
+            self.msg.prefix_print("data stream already started")
 
     @deprecated(version='1.1.0', reason="You should use .dataStart_RT_B() instead")
     def dataStart_RT(self):
@@ -872,7 +872,7 @@ class OpenPyLivox:
             if response == 0:
                 self._is_data = True
             elif response == 1:
-                self.msg.prefix_print("     FAILED to start data stream")
+                self.msg.prefix_print("FAILED to start data stream")
                 if self._capture_stream is not None:
                     self._capture_stream.stop()
                 time.sleep(0.1)
@@ -882,7 +882,7 @@ class OpenPyLivox:
                                "   -->     incorrect start data stream response")
 
         else:
-            self.msg.prefix_print("     data stream already started")
+            self.msg.prefix_print("data stream already started")
 
     def dataStart_RT_B(self):
         self._data_start_rt_b()
@@ -891,12 +891,12 @@ class OpenPyLivox:
 
     def _data_stop(self):
         if not self._is_data:
-            self.msg.prefix_print("     data stream already stopped")
+            self.msg.prefix_print("data stream already stopped")
             return
         response = self.send_command_receive_ack(sdk_defs.CMD_DATA_STOP, "General", 4)
         self.msg.print("   " + self._sensor_ip + self._format_spaces + "   <--     sent stop data stream request")
         if response == 1:
-            self.msg.prefix_print("     FAILED to stop data stream")
+            self.msg.prefix_print("FAILED to stop data stream")
         elif response == -1:
             self.msg.print("   " + self._sensor_ip + self._format_spaces +
                            "   -->     incorrect stop data stream response")
@@ -1161,7 +1161,7 @@ class OpenPyLivox:
             return
 
         if response == 1:
-            self.msg.prefix_print("     FAILED to set lidar mode value")
+            self.msg.prefix_print("FAILED to set lidar mode value")
         elif response == -1:
             self.msg.prefix_print("incorrect set lidar mode response")
 
@@ -1261,15 +1261,15 @@ class OpenPyLivox:
                         firmware_type = 1
 
                     if duration < 0:
-                        self.msg.prefix_print("     * ISSUE: saving data, negative duration")
+                        self.msg.prefix_print("* ISSUE: saving data, negative duration")
                     elif duration >= 126230400:  # max duration = 4 years - 1 sec
-                        self.msg.prefix_print("     * ISSUE: saving data, duration too big")
+                        self.msg.prefix_print("* ISSUE: saving data, duration too big")
                     elif secs_to_wait < 0:
-                        self.msg.prefix_print("     * ISSUE: saving data, negative time to wait")
+                        self.msg.prefix_print("* ISSUE: saving data, negative time to wait")
                     elif secs_to_wait > 15 * 60:  # max time to wait = 15 mins
-                        self.msg.prefix_print("     * ISSUE: saving data, time to wait too big")
+                        self.msg.prefix_print("* ISSUE: saving data, time to wait too big")
                     elif file_path_and_name == "":
-                        self.msg.prefix_print("     * ISSUE: saving data, file path and name missing")
+                        self.msg.prefix_print("* ISSUE: saving data, file path and name missing")
                     else:
                         self._is_writing = True
                         self._capture_stream.file_path_and_name = file_path_and_name
@@ -1280,9 +1280,9 @@ class OpenPyLivox:
                         time.sleep(0.1)
                         self._capture_stream.is_capturing = True
                 else:
-                    self.msg.prefix_print("     unknown firmware version")
+                    self.msg.prefix_print("unknown firmware version")
             else:
-                self.msg.prefix_print("     WARNING: data stream not started, no data file created")
+                self.msg.prefix_print("WARNING: data stream not started, no data file created")
 
     def saveDataToFile(self, file_path_and_name, secs_to_wait, duration):
         path_file = Path(file_path_and_name)
@@ -1563,37 +1563,37 @@ def _convert_bin2_csv(file_path_and_name, delete_bin):
                         if 0 <= data_type <= 5:
                             print("CONVERTING OPL BINARY DATA, PLEASE WAIT...")
                             if firmware_type == 1 and data_type == 0:
-                                csv_file.write("//X,Y,Z,Inten-sity,Time,ReturnNum\n")
+                                csv_file.write("//X,Y,Z,Intensity,Time,ReturnNum\n")
                                 data_class = 1
                                 divisor = 21
                             elif firmware_type == 1 and data_type == 1:
-                                csv_file.write("//Distance,Zenith,Azimuth,Inten-sity,Time,ReturnNum\n")
+                                csv_file.write("//Distance,Zenith,Azimuth,Intensity,Time,ReturnNum\n")
                                 data_class = 2
                                 divisor = 17
                             elif firmware_type > 1 and data_type == 0:
-                                csv_file.write("//X,Y,Z,Inten-sity,Time,ReturnNum\n")
+                                csv_file.write("//X,Y,Z,Intensity,Time,ReturnNum\n")
                                 data_class = 3
                                 divisor = 22
                             elif firmware_type > 1 and data_type == 1:
-                                csv_file.write("//Distance,Zenith,Azimuth,Inten-sity,Time,ReturnNum\n")
+                                csv_file.write("//Distance,Zenith,Azimuth,Intensity,Time,ReturnNum\n")
                                 data_class = 4
                                 divisor = 18
                             elif firmware_type == 1 and data_type == 2:
-                                csv_file.write("//X,Y,Z,Inten-sity,Time,ReturnNum,ReturnType,sConf,iConf\n")
+                                csv_file.write("//X,Y,Z,Intensity,Time,ReturnNum,ReturnType,sConf,iConf\n")
                                 data_class = 5
                                 divisor = 22
                             elif firmware_type == 1 and data_type == 3:
                                 csv_file.write(
-                                    "//Distance,Zenith,Azimuth,Inten-sity,Time,ReturnNum,ReturnType,sConf,iConf\n")
+                                    "//Distance,Zenith,Azimuth,Intensity,Time,ReturnNum,ReturnType,sConf,iConf\n")
                                 data_class = 6
                                 divisor = 18
                             elif firmware_type == 1 and data_type == 4:
-                                csv_file.write("//X,Y,Z,Inten-sity,Time,ReturnNum,ReturnType,sConf,iConf\n")
+                                csv_file.write("//X,Y,Z,Intensity,Time,ReturnNum,ReturnType,sConf,iConf\n")
                                 data_class = 7
                                 divisor = 36
                             elif firmware_type == 1 and data_type == 5:
                                 csv_file.write(
-                                    "//Distance,Zenith,Azimuth,Inten-sity,Time,ReturnNum,ReturnType,sConf,iConf\n")
+                                    "//Distance,Zenith,Azimuth,Intensity,Time,ReturnNum,ReturnType,sConf,iConf\n")
                                 data_class = 8
                                 divisor = 24
 
