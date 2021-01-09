@@ -30,10 +30,12 @@ import struct
 def read_from_queue(queue):
     print("STARTING DATA QUEUE READER THREAD")
     i = 0
+    start_time = time.process_time()
     while True:
         data_point = queue.get()
         if not data_point:
-            time.sleep(0.001)
+            print(".")
+            time.sleep(0.01)
             continue
         if data_point == -1:
             print("END OF QUEUE REACHED, BREAKING")
@@ -49,8 +51,9 @@ def read_from_queue(queue):
         if i == 1:
             print("FIRST VALUE READ FROM QUEUE")
         if i % 10000 == 0:
-            print(i)
-    print("We're done here")
+            t = time.process_time()
+            print(f'{i} at {t - start_time} seconds')
+    print(f'End of recording after {time.process_time() - start_time} seconds')
 
 
 # demo operations for a single Livox Sensor
@@ -83,6 +86,15 @@ def singleSensorDemo():
 
     # make sure a sensor was connected
     if connected:
+
+        # create a multiprocessing queue to write the output to
+        q = multiprocessing.Queue()
+        sensor.set_output_queue(q)
+
+        # FOR SCIENCE
+        p = multiprocessing.Process(target=read_from_queue, args=(q,))
+        p.start()
+
         # the sensor's connection parameters can be returned as a list of strings
         connParams = sensor.connectionParameters()
 
@@ -93,14 +105,6 @@ def singleSensorDemo():
         serial = sensor.serialNumber()
 
         sensor.showMessages(True)
-
-        # create a multiprocessing queue to write the output to
-        q = multiprocessing.Queue()
-        sensor.set_output_queue(q)
-
-        # FOR SCIENCE
-        p = multiprocessing.Process(target=read_from_queue, args=(q,))
-        p.start()
 
         # set the output coordinate system to Spherical
         sensor.setSphericalCS()

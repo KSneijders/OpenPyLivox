@@ -770,7 +770,7 @@ class OpenPyLivox:
                     stopper = False
 
             if stopper:
-                self.msg.prefix_print("     lidar is ready")
+                self.msg.prefix_print("lidar is ready")
                 for i in range(len(self._mid100_sensors)):
                     if self._mid100_sensors[i]._showMessages:
                         print("   " + self._mid100_sensors[i]._sensor_ip + self._mid100_sensors[i]._format_spaces +
