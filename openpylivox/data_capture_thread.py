@@ -1,8 +1,9 @@
+import multiprocessing
 import select
 import struct
 import threading
 from pathlib import Path
-from multiprocessing import Queue
+import multiprocessing
 
 from openpylivox import helper
 from openpylivox.enums import DataType, FileType, FirmwareType
@@ -65,9 +66,13 @@ class DataCaptureThread:
         else:
             raise ValueError("Unknown filetype.")
 
-        self.thread = threading.Thread(target=callback, args=())
-        self.thread.daemon = True
-        self.thread.start()
+        # TODO: RUN AS MULTIPROCESSING PROCESS
+        # self.thread = threading.Thread(target=callback, args=())
+        # self.thread.daemon = True
+        # self.thread.start()
+
+        p = multiprocessing.Process(target=callback, args=())
+        p.start()
 
     def run(self):
         version, _ = self.loop_until_capturing(verify=True)
