@@ -1375,7 +1375,7 @@ class OpenPyLivox:
 
     def serialNumber(self):
         if self._is_connected:
-            self.msg.prefix_print(f"     Serial # {self._serial}")
+            self.msg.prefix_print(f"Serial # {self._serial}")
 
             return self._serial
 
